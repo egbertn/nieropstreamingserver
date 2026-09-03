@@ -1,0 +1,14 @@
+@streaming_HostAddress = http://localhost:8080
+
+GET {{streaming_HostAddress}}/api/tracks
+Accept: application/json
+
+###
+
+GET {{streaming_HostAddress}}/playlist.m3u
+
+###
+
+GET {{streaming_HostAddress}}/health
+
+###

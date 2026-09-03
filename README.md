@@ -1,0 +1,154 @@
+# Music streaming for Sonos
+
+Small ASP.NET Core minimal API that serves a local MP3 collection over HTTP to a Sonos
+speaker, and controls that speaker directly over UPnP. Intended for a trusted local
+network; the `/api` endpoints are protected by a shared token, the audio itself is served
+without authentication because the speaker cannot send headers.
+
+![The control page in a browser](demo.jpg)
+
+## How it works
+
+```mermaid
+sequenceDiagram
+    participant B as Browser (till PC)
+    participant A as This service (raspberrypi.local:8080)
+    participant S as Sonos speaker (:1400)
+    B->>A: POST /api/play
+    A->>S: UPnP SOAP: AddURIToQueue + Play
+    S->>A: GET /music/<track>.mp3 (with Range)
+    A-->>S: 206 audio/mpeg
+```
+
+The audio goes straight from the service to the speaker. The browser only sends commands;
+no sound passes through the till PC.
+
+## Endpoints
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /` | control page with Start/Pause/Stop/Next, volume, upload and track list |
+| `GET /music/{path}` | the audio file itself, with range requests (seeking works) |
+| `GET /api/tracks` | JSON list with path, title and absolute URL |
+| `POST /api/tracks` | multipart upload of one or more `audio/*` files into the music folder |
+| `DELETE /api/tracks/{path}` | delete a single file from the music folder |
+| `GET /playlist.m3u` | M3U with absolute URLs |
+| `GET /tracks` | plain HTML file listing |
+| `GET /health` | status and number of tracks found |
+| `GET /api/speakers` | discovered speakers (`?refresh=true` forces a new search) |
+| `GET /api/state` | `PLAYING`, `PAUSED_PLAYBACK` or `STOPPED` |
+| `POST /api/play` | queues every file on the server and starts. `?shuffle=true` for random order |
+| `POST /api/pause`, `/api/stop`, `/api/next`, `/api/previous` | transport control |
+| `POST /api/volume?level=0..100` | volume |
+
+All control endpoints optionally accept `?speaker=<name or ip>`. Without that parameter the
+first speaker found is used.
+
+## Access
+
+Everything under `/api` requires an `X-Api-Token` header matching `Streaming:ApiToken`. The
+control page asks for the token once and keeps it in `localStorage`. Because the header is a
+custom one, browsers send a CORS preflight for it, which also stops other websites from
+firing requests at the service.
+
+Leave `Streaming:ApiToken` empty and the check is skipped entirely, which is convenient for
+local development; a warning is logged at startup. Generate a token with
+`openssl rand -base64 24` and set it through systemd so it stays out of git:
+
+```bash
+sudo systemctl edit kestrel-music
+```
+```ini
+[Service]
+Environment=Streaming__ApiToken=<token>
+```
+
+`GET /music/*` stays open: the Sonos speaker fetches the audio itself and cannot
+authenticate. Traffic is plain HTTP, so the token is readable to anyone who can capture
+traffic on the network. That is a deliberate trade-off for a home network, in the same vein
+as a router admin page over HTTP.
+
+## Music
+
+MP3s (or m4a/flac/wav/ogg) live in `wwwroot/music`, subfolders are allowed. Upload them from
+the control page, or copy them straight onto the Pi with `rsync` or `scp`.
+
+The collection is read from disk on every request, so new files are available immediately
+without a restart. The files on the server together form the playlist; on `POST /api/play`
+the speaker queue is rebuilt from them and set to repeat, so the music keeps going.
+
+## Deploying
+
+```bash
+export DEPLOY_TARGET=user@host
+./publish.sh
+DEPLOY_TARGET=user@host TARGET_DIR=apps/music ./publish.sh
+```
+
+`DEPLOY_TARGET` is required. This publishes framework-dependent for `linux-arm64`, syncs to
+the Pi (without wiping the music folder), installs `deploy/kestrel-music.service` as a
+systemd unit and starts it.
+
+```bash
+journalctl -u kestrel-music -f
+```
+
+## Configuration
+
+| Key | Default | Meaning |
+|---|---|---|
+| `Streaming:Port` | 8080 | listening port, bound on all interfaces |
+| `Streaming:ApiToken` | empty | shared secret for `/api`; empty disables the check |
+| `Streaming:Sonos:Addresses` | empty | comma-separated speaker IPs; skips SSDP |
+| `Streaming:Sonos:DiscoveryPort` | 1901 | fixed UDP source port for SSDP, so you can open it in the firewall |
+
+Override these through systemd using double underscores:
+
+```bash
+sudo systemctl edit kestrel-music
+```
+```ini
+[Service]
+Environment=Streaming__Sonos__Addresses=192.168.1.211
+```
+
+## Firewall
+
+Two things need to be open on the Pi:
+
+```bash
+sudo ufw allow from 192.168.1.0/24 to any port 8080 proto tcp   # speaker fetches audio
+sudo ufw allow from 192.168.1.0/24 to any port 1901 proto udp   # SSDP replies
+```
+
+The UDP rule is unnecessary if you fill in `Streaming:Sonos:Addresses`.
+
+## Troubleshooting
+
+**Player does nothing, play blinks.** Check that you are using a playable URL. `/` returns
+HTML; players need `/playlist.m3u` or `/music/<file>.mp3`.
+
+**"Geen speaker gevonden".** SSDP replies are blocked by the firewall. Open UDP 1901 or fill
+in the speaker address. Find the IP with `sudo nmap -p 1400 --open 192.168.1.0/24`.
+
+**Every API call returns 401.** The token is wrong or missing. Clear it in the browser with
+`localStorage.removeItem('apiToken')` and reload, or check `Streaming__ApiToken` on the Pi.
+
+**Seeing requests.** Kestrel only logs warnings by default. Enable temporarily:
+
+```ini
+[Service]
+Environment=Logging__LogLevel__Microsoft.AspNetCore=Information
+```
+
+Or watch at packet level: `sudo tcpdump -i any -n 'tcp port 8080'`.
+
+**Checking the stream without a speaker.** Open the MP3 URL in VLC, or:
+
+```bash
+curl -sI http://<host>:8080/music/<file>.mp3
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Range: bytes=0-1023' http://<host>:8080/music/<file>.mp3
+```
+
+Expect `200` with `Content-Type: audio/mpeg` and `Accept-Ranges: bytes`, and `206` on the
+range request.

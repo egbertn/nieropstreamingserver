@@ -1,0 +1,26 @@
+[Unit]
+Description=Sonos MP3 streaming service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# __USER__ and __DIR__ are filled in by publish.sh.
+Type=notify
+WorkingDirectory=__DIR__
+ExecStart=/home/__USER__/.dotnet/dotnet __DIR__/streaming.dll
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_PrintTelemetryMessage=false
+Environment=Streaming__Port=8080
+Environment=Streaming__ApiToken=*ANYTHING*
+User=__USER__
+Group=__USER__
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+SyslogIdentifier=kestrel-music
+
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

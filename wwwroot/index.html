@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muziek</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 2rem; max-width: 40rem; }
+  h1 { font-size: 1.5rem; margin-top: 0; }
+  .row { display: flex; gap: .75rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+  button { font-size: 1.25rem; padding: 1rem 1.5rem; border-radius: .75rem; border: 1px solid #8888; cursor: pointer; background: #8881; }
+  button:hover { background: #8883; }
+  button.active { background: #2d7d46; color: #fff; border-color: #2d7d46; }
+  select, input[type=range] { font-size: 1rem; padding: .4rem; }
+  #status { font-size: .95rem; opacity: .8; min-height: 1.5rem; }
+  ul { padding-left: 0; list-style: none; }
+  li { padding: .35rem 0; border-bottom: 1px solid #8883; display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+  li button { font-size: .9rem; padding: .35rem .75rem; }
+  li .title { overflow-wrap: anywhere; }
+  li button.delete { line-height: 0; }
+  dialog { border: 1px solid #8888; border-radius: .75rem; padding: 1.5rem; }
+  dialog .row { margin-bottom: 0; }
+</style>
+</head>
+<body>
+<h1>Muziek</h1>
+
+<div class="row">
+  <label>Speaker
+    <select id="speaker"></select>
+  </label>
+</div>
+
+<div class="row">
+  <button id="btnStart" class="active" onclick="post('/api/play', 'shuffle=' + $('shuffle').checked)">Start</button>
+  <button id="btnPause" onclick="post('/api/pause')">Pauze</button>
+  <button id="btnStop" onclick="post('/api/stop')">Stop</button>
+  <button onclick="post('/api/next')">Volgende</button>
+  <button id="btnUpload">Upload</button>
+</div>
+
+<dialog id="uploadDialog">
+  <form method="dialog">
+    <h2>Muziek uploaden</h2>
+    <div class="row">
+      <input type="file" id="uploadFiles" accept="audio/*" multiple>
+    </div>
+    <div class="row">
+      <button value="cancel">Annuleren</button>
+      <button value="upload" id="btnDoUpload">Uploaden</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="row">
+  <label><input type="checkbox" id="shuffle"> Willekeurige volgorde</label>
+</div>
+
+<div class="row">
+  <label>Volume <input type="range" id="volume" min="0" max="100" value="25"></label>
+</div>
+
+<p id="status"></p>
+<p id="nowPlaying"></p>
+
+<h2>Nummers</h2>
+<ul id="tracks"></ul>
+
+<script>
+const $ = id => document.getElementById(id);
+const say = text => $('status').textContent = text;
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// The token is kept in localStorage; on a 401 we ask once and retry.
+async function api(path, options = {}) {
+  const send = () => {
+    const token = localStorage.getItem('apiToken');
+    return fetch(path, { ...options, headers: { ...options.headers, ...(token ? { 'X-Api-Token': token } : {}) } });
+  };
+
+  const res = await send();
+  if (res.status !== 401) return res;
+
+  const token = prompt('Toegangscode voor deze pagina:');
+  if (!token) return res;
+  localStorage.setItem('apiToken', token);
+  return send();
+}
+
+function speakerParam(extra = '') {
+  const name = $('speaker').value;
+  const params = new URLSearchParams(extra);
+  if (name) params.set('speaker', name);
+  const query = params.toString();
+  return query ? '?' + query : '';
+}
+
+async function post(path, extra = '') {
+  say('Bezig...');
+  try {
+    const res = await api(path + speakerParam(extra), { method: 'POST' });
+    const data = await res.json();
+    say(res.ok ? (data.tracks ? data.tracks + ' nummers' : 'Ok') : data.error);
+  } catch (err) {
+    say('Fout: ' + err.message);
+  }
+  refreshState();
+}
+
+function setActive(state) {
+  const map = { PLAYING: 'btnStart', PAUSED_PLAYBACK: 'btnPause', STOPPED: 'btnStop' };
+  const activeId = map[state] ?? 'btnStop';
+  for (const id of ['btnStart', 'btnPause', 'btnStop']) $(id).classList.toggle('active', id === activeId);
+}
+
+function formatTime(totalSeconds) {
+  const s = Math.max(0, Math.round(totalSeconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const mm = String(m).padStart(h > 0 ? 2 : 1, '0');
+  const ss = String(sec).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+let playback = null; // { title, elapsed, duration, playing } — elapsed keeps ticking locally between polls
+
+function renderPlayback() {
+  $('nowPlaying').textContent = playback?.title
+    ? `${playback.title} — ${formatTime(playback.elapsed)} / ${formatTime(playback.duration)}`
+    : '';
+}
+
+async function refreshState() {
+  try {
+    const res = await api('/api/state' + speakerParam());
+    if (!res.ok) return;
+    const data = await res.json();
+    setActive(data.state);
+    playback = data.title
+      ? { title: data.title, elapsed: data.elapsed, duration: data.duration, playing: data.state === 'PLAYING' }
+      : null;
+    renderPlayback();
+  } catch { /* speaker unreachable, leave the buttons as they are */ }
+}
+
+async function load() {
+  const speakers = await (await api('/api/speakers')).json();
+  $('speaker').innerHTML = speakers.map(s => `<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('')
+    || '<option value="">geen speaker gevonden</option>';
+
+  await loadTracks();
+  refreshState();
+}
+
+const crossIcon = '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 1 13 13M13 1 1 13" stroke="currentColor" stroke-width="2" fill="none"/></svg>';
+
+async function loadTracks() {
+  const tracks = await (await api('/api/tracks')).json();
+  const list = $('tracks');
+  list.innerHTML = '';
+  for (const track of tracks) {
+    const li = document.createElement('li');
+    const title = document.createElement('span');
+    title.className = 'title';
+    title.textContent = track.title;
+    const del = document.createElement('button');
+    del.className = 'delete';
+    del.title = 'Verwijderen';
+    del.setAttribute('aria-label', 'Verwijder ' + track.title);
+    del.innerHTML = crossIcon;
+    del.onclick = () => removeTrack(track);
+    li.append(title, del);
+    list.append(li);
+  }
+}
+
+// Reload after upload/delete; if the removed track was playing, start the first available file.
+async function refreshAfterChange(resumePlaying) {
+  await loadTracks();
+  if (resumePlaying) await post('/api/play', 'shuffle=' + $('shuffle').checked);
+  else refreshState();
+}
+
+async function removeTrack(track) {
+  if (!confirm('Weet je zeker dat je deze file wilt verwijderen?')) return;
+
+  const isCurrent = playback?.title === track.title;
+  const wasPlaying = playback?.playing === true;
+  if (isCurrent) await post('/api/stop');
+
+  say('Bezig...');
+  try {
+    const path = track.path.split('/').map(encodeURIComponent).join('/');
+    const res = await api('/api/tracks/' + path, { method: 'DELETE' });
+    const data = await res.json();
+    say(res.ok ? 'Verwijderd' : data.error);
+    if (!res.ok) return;
+  } catch (err) {
+    say('Fout: ' + err.message);
+    return;
+  }
+  await refreshAfterChange(isCurrent && wasPlaying);
+}
+
+async function uploadFiles() {
+  const input = $('uploadFiles');
+  const files = [...input.files].filter(f => f.type.startsWith('audio/'));
+  input.value = '';
+  if (files.length === 0) { say('Geen audiobestanden geselecteerd'); return; }
+
+  const body = new FormData();
+  for (const file of files) body.append('files', file);
+
+  say('Uploaden...');
+  try {
+    const res = await api('/api/tracks', { method: 'POST', body });
+    const data = await res.json();
+    say(res.ok ? `${data.saved.length} geüpload, ${data.skipped.length} overgeslagen` : data.error);
+    if (!res.ok) return;
+  } catch (err) {
+    say('Fout: ' + err.message);
+    return;
+  }
+  await refreshAfterChange(false);
+}
+
+$('btnUpload').onclick = () => $('uploadDialog').showModal();
+$('uploadDialog').addEventListener('close', e => {
+  if (e.target.returnValue === 'upload') uploadFiles();
+  else $('uploadFiles').value = '';
+});
+$('volume').onchange = e => post('/api/volume', 'level=' + e.target.value);
+$('speaker').onchange = refreshState;
+load();
+setInterval(refreshState, 10000);
+setInterval(() => {
+  if (!playback?.playing) return;
+  playback.elapsed = Math.min(playback.elapsed + 1, playback.duration);
+  renderPlayback();
+}, 1000);
+</script>
+</body>
+</html>
