@@ -7,6 +7,25 @@ without authentication because the speaker cannot send headers.
 
 ![The control page in a browser](demo.jpg)
 
+## Why
+
+Getting a Raspberry Pi to serve music to a Sonos speaker usually means stacking up
+infrastructure: Samba or NFS to get the files onto the Pi, a media server such as Plex,
+Jellyfin or a UPnP/DLNA daemon to expose them, snapd or Docker to install all of that, and a
+mobile app to steer the result. Every one of those parts needs its own configuration,
+updates and troubleshooting.
+
+This service replaces that stack with a single self-contained binary. No media server, no
+file share, no container runtime, no app to install. Drop the published output on the Pi,
+enable one systemd unit, and open the page in any browser on the network. Uploading and
+deleting tracks happens straight from that page, so the file share disappears too.
+
+Because the speaker fetches the audio from the Pi over the local network, playback uses no
+internet bandwidth at all and keeps working when the connection drops. That makes it a
+practical fit for a restaurant, salon or shop that wants to play its own music over its own
+wifi, without a streaming subscription and without the licensing and reliability questions
+that come with a cloud service.
+
 ## How it works
 
 ```mermaid
@@ -85,9 +104,13 @@ export DEPLOY_TARGET=user@host
 DEPLOY_TARGET=user@host TARGET_DIR=apps/music ./publish.sh
 ```
 
-`DEPLOY_TARGET` is required. This publishes framework-dependent for `linux-arm64`, syncs to
-the Pi (without wiping the music folder), installs `deploy/kestrel-music.service` as a
-systemd unit and starts it.
+`DEPLOY_TARGET` is required. This publishes a self-contained, compressed single-file binary
+for `linux-arm64`, syncs it to the Pi (without wiping the music folder), installs
+`deploy/kestrel-music.service` as a systemd unit and starts it.
+
+The result is one executable of roughly 47 MB plus `appsettings.json` and the control page.
+Nothing else has to be installed on the Pi: no .NET runtime, no snap, no container. Set
+`PUBLISH_RID` for another target, for example `linux-x64` or `linux-arm` for an older Pi.
 
 ```bash
 journalctl -u kestrel-music -f

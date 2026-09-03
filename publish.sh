@@ -19,7 +19,8 @@ SERVICE_FILE="${SERVICE_FILE:-$PROJECT_DIR/deploy/kestrel-music.service}"
 REMOTE_USER="${DEPLOY_TARGET%%@*}"
 
 echo "Publishing to $OUTDIR"
-dotnet publish "$PROJECT_DIR/streaming.csproj" -r "$PUBLISH_RID" -c Release --self-contained false -o "$OUTDIR"
+rm -rf "$OUTDIR"
+dotnet publish "$PROJECT_DIR/streaming.csproj" -r "$PUBLISH_RID" -c Release --self-contained true -o "$OUTDIR"
 
 if [[ ! -d "$OUTDIR" ]] || [[ -z "$(find "$OUTDIR" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
   echo "Publish output is missing in $OUTDIR"
@@ -36,10 +37,15 @@ ssh "$DEPLOY_TARGET" "mkdir -p \"\$HOME/$TARGET_DIR\""
 echo "Syncing files"
 rsync -az --delete --exclude 'wwwroot/music/***' "$OUTDIR/" "$DEPLOY_TARGET:$TARGET_DIR/"
 
-if [[ -f "$SERVICE_FILE" ]]; then
+REMOTE_UNIT="/etc/systemd/system/$SERVICE_NAME.service"
+
+# Never overwrite a unit that was tuned on the target; only install it the first time.
+if ssh "$DEPLOY_TARGET" "test -f $REMOTE_UNIT"; then
+  echo "Keeping existing $REMOTE_UNIT"
+elif [[ -f "$SERVICE_FILE" ]]; then
   echo "Installing systemd service"
   sed -e "s#__USER__#$REMOTE_USER#g" -e "s#__DIR__#/home/$REMOTE_USER/$TARGET_DIR#g" "$SERVICE_FILE" \
-    | ssh "$DEPLOY_TARGET" "sudo tee /etc/systemd/system/$SERVICE_NAME.service > /dev/null"
+    | ssh "$DEPLOY_TARGET" "sudo tee $REMOTE_UNIT > /dev/null"
   ssh "$DEPLOY_TARGET" "sudo systemctl daemon-reload && sudo systemctl enable $SERVICE_NAME"
 else
   echo "Service file not found at $SERVICE_FILE, skipping systemd install"

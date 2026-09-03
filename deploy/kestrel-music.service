@@ -7,7 +7,7 @@ Wants=network-online.target
 # __USER__ and __DIR__ are filled in by publish.sh.
 Type=notify
 WorkingDirectory=__DIR__
-ExecStart=/home/__USER__/.dotnet/dotnet __DIR__/streaming.dll
+ExecStart=__DIR__/streaming
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=DOTNET_PrintTelemetryMessage=false
 Environment=Streaming__Port=8080
