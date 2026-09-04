@@ -89,16 +89,20 @@ jobs:
 
       - name: Health check
         run: |
+          healthy=false
           for attempt in $(seq 1 "$HEALTH_RETRIES"); do
             if curl -sf "$HEALTH_URL" > /dev/null; then
               echo "Healthy after $attempt attempt(s)"
-              exit 0
+              healthy=true
+              break
             fi
             echo "Attempt ${attempt}/${HEALTH_RETRIES} failed"
             sleep "$HEALTH_INTERVAL"
           done
-          echo "Service did not become healthy"
-          exit 1
+          if [[ "$healthy" != true ]]; then
+            echo "Service did not become healthy"
+            exit 1
+          fi
 
       - name: Drop rollback snapshot
         if: success()
