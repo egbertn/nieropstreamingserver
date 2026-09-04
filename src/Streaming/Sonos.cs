@@ -234,18 +234,17 @@ public sealed partial class SonosService(HttpClient http, IConfiguration configu
             foreach (Match group in ZoneGroup().Matches(state))
             {
                 var coordinatorUuid = group.Groups["coordinator"].Value;
-                var members = ZoneGroupMember().Matches(group.Groups["members"].Value)
+                string[] members = [.. ZoneGroupMember().Matches(group.Groups["members"].Value)
                     .Select(m => m.Groups["attributes"].Value)
-                    .Where(attrs => Attribute(attrs, "Invisible") != "1")
-                    .ToList();
+                    .Where(attrs => Attribute(attrs, "Invisible") != "1")];
 
                 var coordinator = members.FirstOrDefault(attrs => Attribute(attrs, "UUID") == coordinatorUuid);
                 if (coordinator is null || !Uri.TryCreate(Attribute(coordinator, "Location"), UriKind.Absolute, out var location))
                     continue;
 
                 var name = Attribute(coordinator, "ZoneName");
-                if (members.Count > 1)
-                    name += $" (+{members.Count - 1})";
+                if (members.Length > 1)
+                    name += $" (+{members.Length - 1})";
 
                 coordinators.Add(new SonosSpeaker(name, location.Host, coordinatorUuid));
             }

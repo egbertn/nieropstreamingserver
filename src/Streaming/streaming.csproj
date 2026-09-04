@@ -4,6 +4,12 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <PublishAot>true</PublishAot>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <!-- TagLibSharp 2.3.0 contains unavoidable legacy trim warnings; its assembly is rooted below. -->
+    <NoWarn>$(NoWarn);IL2104</NoWarn>
   </PropertyGroup>
 
   <!-- Publish as one self-contained executable so the Pi needs no .NET install. -->
@@ -17,6 +23,9 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.0" />
+    <PackageReference Include="TagLibSharp" Version="2.3.0" />
+    <!-- TagLib discovers audio handlers through Activator at runtime. Keep its handlers in AOT output. -->
+    <TrimmerRootAssembly Include="TagLibSharp" />
   </ItemGroup>
 
   <!-- Without this the previous publish output ends up inside the next one. -->

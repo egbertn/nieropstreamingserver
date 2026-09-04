@@ -217,8 +217,12 @@ async function uploadFiles() {
   try {
     const res = await api('/api/tracks', { method: 'POST', body });
     const data = await res.json();
-    say(res.ok ? `${data.saved.length} geüpload, ${data.skipped.length} overgeslagen` : data.error);
-    if (!res.ok) return;
+    if (!res.ok) { say(data.error); return; }
+
+    let msg = `${data.saved.length} geüpload, ${data.skipped.length} overgeslagen`;
+    if (data.flagged.length > 0)
+      msg += ` — geweigerd wegens vermoedelijk auteursrecht: ${data.flagged.join('; ')}`;
+    say(msg);
   } catch (err) {
     say('Fout: ' + err.message);
     return;

@@ -13,6 +13,7 @@ PUBLISH_RID="${PUBLISH_RID:-linux-arm64}"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR"
+SOURCE_PROJECT="$PROJECT_DIR/src/Streaming/streaming.csproj"
 OUTDIR="$PROJECT_DIR/out/publish"
 SERVICE_FILE="${SERVICE_FILE:-$PROJECT_DIR/deploy/kestrel-music.service}"
 
@@ -20,7 +21,7 @@ REMOTE_USER="${DEPLOY_TARGET%%@*}"
 
 echo "Publishing to $OUTDIR"
 rm -rf "$OUTDIR"
-dotnet publish "$PROJECT_DIR/streaming.csproj" -r "$PUBLISH_RID" -c Release --self-contained true -o "$OUTDIR"
+dotnet publish "$SOURCE_PROJECT" -r "$PUBLISH_RID" -c Release --self-contained true -o "$OUTDIR"
 
 if [[ ! -d "$OUTDIR" ]] || [[ -z "$(find "$OUTDIR" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
   echo "Publish output is missing in $OUTDIR"

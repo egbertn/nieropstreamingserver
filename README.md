@@ -1,5 +1,10 @@
 # Music streaming for Sonos
 
+The project is organized as a .NET solution with the application in `src/Streaming`
+and unit tests in `tests/Streaming.Tests`. The music collection under
+`src/Streaming/wwwroot/music` is local runtime data and is intentionally excluded from
+source control and published output.
+
 Small ASP.NET Core minimal API that serves a local MP3 collection over HTTP to a Sonos
 speaker, and controls that speaker directly over UPnP. Intended for a trusted local
 network; the `/api` endpoints are protected by a shared token, the audio itself is served
@@ -89,7 +94,7 @@ as a router admin page over HTTP.
 
 ## Music
 
-MP3s (or m4a/flac/wav/ogg) live in `wwwroot/music`, subfolders are allowed. Upload them from
+MP3s (or m4a/flac/wav/ogg) live in `src/Streaming/wwwroot/music`, subfolders are allowed. Upload them from
 the control page, or copy them straight onto the Pi with `rsync` or `scp`.
 
 The collection is read from disk on every request, so new files are available immediately
@@ -111,6 +116,23 @@ for `linux-arm64`, syncs it to the Pi (without wiping the music folder), install
 The result is one executable of roughly 47 MB plus `appsettings.json` and the control page.
 Nothing else has to be installed on the Pi: no .NET runtime, no snap, no container. Set
 `PUBLISH_RID` for another target, for example `linux-x64` or `linux-arm` for an older Pi.
+
+The release project is configured for Native AOT. Publishing produces a stripped native
+executable instead of shipping the managed application assemblies. JSON responses use the
+source-generated `StreamingJsonContext`; reflection-based JSON serialization is disabled.
+The normal `publish.sh` path therefore builds AOT output for its configured RID.
+
+## Quality checks
+
+Run the local checks with:
+
+```bash
+dotnet test Streaming.slnx --collect:"XPlat Code Coverage;Format=opencover"
+```
+
+The GitHub Actions workflow runs the same tests and sends OpenCover coverage to SonarCloud.
+Configure the repository variables `SONAR_ORGANIZATION` and `SONAR_PROJECT_KEY`, plus the
+`SONAR_TOKEN` secret, before enabling the quality gate.
 
 ```bash
 journalctl -u kestrel-music -f

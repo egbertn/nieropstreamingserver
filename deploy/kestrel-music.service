@@ -11,7 +11,7 @@ ExecStart=__DIR__/streaming
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=DOTNET_PrintTelemetryMessage=false
 Environment=Streaming__Port=8080
-Environment=Streaming__ApiToken=*ANYTHING*
+# Set Streaming__ApiToken through a systemd override or environment file.
 User=__USER__
 Group=__USER__
 Restart=always

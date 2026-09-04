@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
 using Streaming;
@@ -11,11 +12,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSystemd();
 
 builder.Services.AddHttpClient<SonosService>(c => c.Timeout = TimeSpan.FromSeconds(10));
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.TypeInfoResolverChain.Insert(0, StreamingJsonContext.Default));
 
 // Sonos only plays plain HTTP; listen on every interface so the speaker can reach us.
-builder.WebHost.ConfigureKestrel(options =>
+builder.WebHost.ConfigureKestrel((c, options) =>
 {
-    var port = builder.Configuration.GetValue("Streaming:Port", 8080);
+    var port = c.Configuration.GetValue("Streaming:Port", 8080);
     options.ListenAnyIP(port);
     options.Limits.MaxRequestBodySize = 1024L * 1024 * 1024;
 });
@@ -68,7 +71,9 @@ app.Use(async (context, next) =>
         if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(provided), Encoding.UTF8.GetBytes(apiToken)))
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            await context.Response.WriteAsJsonAsync(new { error = "Invalid or missing token" });
+            await context.Response.WriteAsJsonAsync(
+                new ErrorResponse("Invalid or missing token"),
+                StreamingJsonContext.Default.ErrorResponse);
             return;
         }
     }
@@ -93,21 +98,20 @@ string UrlFor(HttpRequest request, string relativePath)
 }
 
 app.MapGet("/api/tracks", (HttpRequest request) =>
-    EnumerateTracks().Select(t => new
-    {
-        path = t,
-        title = Path.GetFileNameWithoutExtension(t),
-        url = UrlFor(request, t)
-    }));
+    EnumerateTracks().Select(t => new TrackResponse(
+        t,
+        Path.GetFileNameWithoutExtension(t),
+        UrlFor(request, t))).ToArray());
 
-app.MapPost("/api/tracks", async (HttpRequest request) =>
+app.MapPost("/api/tracks", async (HttpRequest request, bool force = false) =>
 {
     if (!request.HasFormContentType)
-        return Results.BadRequest(new { error = "Geen upload gevonden" });
+        return Results.BadRequest(new ErrorResponse("Geen upload gevonden"));
 
     var form = await request.ReadFormAsync();
     List<string> saved = [];
     List<string> skipped = [];
+    List<string> flagged = [];
 
     foreach (var file in form.Files)
     {
@@ -134,28 +138,38 @@ app.MapPost("/api/tracks", async (HttpRequest request) =>
         for (var i = 2; File.Exists(destination); i++)
             destination = Path.Combine(musicRoot, $"{stem} ({i}){extension}");
 
-        await using var stream = File.Create(destination);
-        await file.CopyToAsync(stream);
+        await using (var stream = File.Create(destination))
+            await file.CopyToAsync(stream);
+
+        // Heuristic only: absence of these markers is not proof a track is license-free.
+        var reason = CopyrightCheck.Inspect(destination);
+        if (reason is not null && !force)
+        {
+            File.Delete(destination);
+            flagged.Add($"{name}: {reason}");
+            continue;
+        }
+
         saved.Add(Path.GetFileName(destination));
     }
 
-    return Results.Ok(new { saved, skipped });
+    return Results.Ok(new UploadResponse(saved, skipped, flagged));
 }).DisableAntiforgery();
 
 app.MapDelete("/api/tracks/{*path}", (string path) =>
 {
     var full = Path.GetFullPath(Path.Combine(musicRoot, path));
     if (!full.StartsWith(Path.GetFullPath(musicRoot) + Path.DirectorySeparatorChar, StringComparison.Ordinal))
-        return Results.BadRequest(new { error = "Ongeldig pad" });
+        return Results.BadRequest(new ErrorResponse("Ongeldig pad"));
 
     if (!audioExtensions.Contains(Path.GetExtension(full).ToLowerInvariant()))
-        return Results.BadRequest(new { error = "Geen muziekbestand" });
+        return Results.BadRequest(new ErrorResponse("Geen muziekbestand"));
 
     if (!File.Exists(full))
-        return Results.NotFound(new { error = "Bestand bestaat niet" });
+        return Results.NotFound(new ErrorResponse("Bestand bestaat niet"));
 
     File.Delete(full);
-    return Results.Ok(new { deleted = path });
+    return Results.Ok(new DeletedResponse(path));
 });
 
 app.MapGet("/playlist.m3u", (HttpRequest request) =>
@@ -183,7 +197,7 @@ app.MapGet("/tracks", (HttpRequest request) =>
     return Results.Content(sb.ToString(), "text/html", Encoding.UTF8);
 });
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok", tracks = EnumerateTracks().Count() }));
+app.MapGet("/health", () => Results.Ok(new HealthResponse("ok", EnumerateTracks().Count())));
 
 app.MapGet("/api/speakers", (SonosService sonos, bool refresh = false) => sonos.DiscoverAsync(refresh));
 
@@ -191,29 +205,27 @@ app.MapGet("/api/state", async (SonosService sonos, string? speaker) =>
 {
     var target = await sonos.ResolveAsync(speaker);
     if (target is null)
-        return Results.NotFound(new { error = "Geen speaker gevonden" });
+        return Results.NotFound(new ErrorResponse("Geen speaker gevonden"));
 
     var state = await sonos.GetTransportStateAsync(target);
     var position = await sonos.GetPositionInfoAsync(target);
-    return Results.Ok(new
-    {
-        speaker = target.Name,
+    return Results.Ok(new StateResponse(
+        target.Name,
         state,
-        title = position?.Title,
-        elapsed = position?.Elapsed.TotalSeconds,
-        duration = position?.Duration.TotalSeconds
-    });
+        position?.Title,
+        position?.Elapsed.TotalSeconds,
+        position?.Duration.TotalSeconds));
 });
 
 app.MapPost("/api/play", async (SonosService sonos, HttpRequest request, string? speaker, bool shuffle = false) =>
 {
     var target = await sonos.ResolveAsync(speaker);
     if (target is null)
-        return Results.NotFound(new { error = "Geen speaker gevonden" });
+        return Results.NotFound(new ErrorResponse("Geen speaker gevonden"));
 
     var tracks = EnumerateTracks().ToArray();
     if (tracks.Length == 0)
-        return Results.BadRequest(new { error = "Geen muziek gevonden" });
+        return Results.BadRequest(new ErrorResponse("Geen muziek gevonden"));
 
     try
     {
@@ -225,11 +237,14 @@ app.MapPost("/api/play", async (SonosService sonos, HttpRequest request, string?
         await sonos.SelectQueueAsync(target);
         await sonos.SetPlayModeAsync(target, shuffle ? "SHUFFLE" : "REPEAT_ALL");
         await sonos.PlayAsync(target);
-        return Results.Ok(new { speaker = target.Name, tracks = tracks.Length });
+        return Results.Ok(new PlayResponse(target.Name, tracks.Length));
     }
     catch (SonosException ex)
     {
-        return Results.Json(new { error = ex.Message, code = ex.ErrorCode }, statusCode: StatusCodes.Status409Conflict);
+        return Results.Json(
+            new SonosErrorResponse(ex.Message, ex.ErrorCode),
+            StreamingJsonContext.Default.SonosErrorResponse,
+            statusCode: StatusCodes.Status409Conflict);
     }
 });
 
@@ -243,7 +258,7 @@ async Task<IResult> Command(SonosService sonos, string? speaker, Func<SonosSpeak
 {
     var target = await sonos.ResolveAsync(speaker);
     if (target is null)
-        return Results.NotFound(new { error = "Geen speaker gevonden" });
+        return Results.NotFound(new ErrorResponse("Geen speaker gevonden"));
 
     try
     {
@@ -251,10 +266,13 @@ async Task<IResult> Command(SonosService sonos, string? speaker, Func<SonosSpeak
     }
     catch (SonosException ex)
     {
-        return Results.Json(new { error = ex.Message, code = ex.ErrorCode }, statusCode: StatusCodes.Status409Conflict);
+        return Results.Json(
+            new SonosErrorResponse(ex.Message, ex.ErrorCode),
+            StreamingJsonContext.Default.SonosErrorResponse,
+            statusCode: StatusCodes.Status409Conflict);
     }
 
-    return Results.Ok(new { speaker = target.Name });
+    return Results.Ok(new SpeakerResponse(target.Name));
 }
 
 app.Run();
