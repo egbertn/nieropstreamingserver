@@ -1,0 +1,123 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash -leo pipefail {0}
+
+env:
+  RUNTIME: linux-arm64
+
+jobs:
+  build:
+    runs-on: [self-hosted, Linux, ARM64, streaming-build]
+    env:
+      DEPLOY_TARGET: ${{ vars.DEPLOY_TARGET }}
+      DOTNET_ROOT: /home/moeder/.dotnet
+      STAGING_DIR: /home/moeder/apps/music.staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Add local .NET SDK to PATH
+        run: echo "$DOTNET_ROOT" >> "$GITHUB_PATH"
+
+      - name: Tests
+        timeout-minutes: 10
+        run: dotnet test Streaming.slnx --configuration Release
+
+      - name: Publish ARM64 Native AOT
+        run: |
+          rm -rf publish
+          dotnet publish src/Streaming/streaming.csproj \
+            --configuration Release \
+            --runtime "$RUNTIME" \
+            --self-contained true \
+            --output publish \
+            -p:DebugType=none \
+            -p:DebugSymbols=false \
+            -p:SourceRevisionId=${{ github.sha }}
+          test -x publish/streaming
+
+      - name: Push build to Raspberry Pi staging
+        run: |
+          if [[ -z "${DEPLOY_TARGET:-}" ]]; then
+            echo "Repository variable DEPLOY_TARGET is not set."
+            exit 1
+          fi
+          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_TARGET" "mkdir -p '$STAGING_DIR'"
+          rsync -a --delete publish/ "$DEPLOY_TARGET:$STAGING_DIR/"
+
+  deploy:
+    needs: build
+    runs-on: [self-hosted, Linux, ARM64, streaming-prod]
+    env:
+      DEPLOY_DIR: /home/moeder/apps/music
+      DEPLOY_PREV: /home/moeder/apps/music.prev
+      STAGING_DIR: /home/moeder/apps/music.staging
+      SERVICE_NAME: kestrel-music
+      HEALTH_URL: http://localhost:8080/health
+      HEALTH_RETRIES: "10"
+      HEALTH_INTERVAL: "3"
+    steps:
+      - name: Snapshot for rollback
+        run: |
+          rm -rf "$DEPLOY_PREV"
+          mkdir -p "$DEPLOY_PREV" "$DEPLOY_DIR"
+          rsync -a --delete \
+            --exclude 'wwwroot/music/***' \
+            "$DEPLOY_DIR/" "$DEPLOY_PREV/"
+
+      - name: Activate new version
+        run: |
+          rsync -a --delete \
+            --exclude 'wwwroot/music/***' \
+            "$STAGING_DIR/" "$DEPLOY_DIR/"
+          chmod +x "$DEPLOY_DIR/streaming"
+          sudo systemctl restart "$SERVICE_NAME"
+
+      - name: Health check
+        run: |
+          for attempt in $(seq 1 "$HEALTH_RETRIES"); do
+            if curl -sf "$HEALTH_URL" > /dev/null; then
+              echo "Healthy after $attempt attempt(s)"
+              exit 0
+            fi
+            echo "Attempt ${attempt}/${HEALTH_RETRIES} failed"
+            sleep "$HEALTH_INTERVAL"
+          done
+          echo "Service did not become healthy"
+          exit 1
+
+      - name: Drop rollback snapshot
+        if: success()
+        run: rm -rf "$DEPLOY_PREV"
+
+      - name: Roll back on failure
+        if: failure()
+        run: |
+          if [[ ! -d "$DEPLOY_PREV" ]]; then
+            echo "No rollback snapshot available"
+            exit 1
+          fi
+          rsync -a --delete \
+            --exclude 'wwwroot/music/***' \
+            "$DEPLOY_PREV/" "$DEPLOY_DIR/"
+          sudo systemctl restart "$SERVICE_NAME"
+          if curl -sf --retry 5 --retry-delay 3 --retry-connrefused "$HEALTH_URL" > /dev/null; then
+            echo "Rollback succeeded; previous version restored"
+          else
+            echo "Rollback failed; manual intervention is required"
+            exit 1
+          fi

@@ -103,24 +103,40 @@ the speaker queue is rebuilt from them and set to repeat, so the music keeps goi
 
 ## Deploying
 
+Every push to `main` runs `.github/workflows/deploy.yml`. The deployment uses two
+repository-scoped ARM64 runners:
+
+| Runner | Label | Directory | Responsibility |
+|---|---|---|---|
+| `justin-streaming` | `streaming-build` | `/home/moeder/actions-runner-streaming` on Justin | test and publish Native AOT |
+| `raspberrypi-streaming` | `streaming-prod` | `/home/moeder/actions-runner-streaming` on the Pi | activate, restart, health check and rollback |
+
+These installations and their systemd services are separate from the LinkATap runners.
+The build is copied to `/home/moeder/apps/music.staging`; production remains in
+`/home/moeder/apps/music`. Deployment excludes `wwwroot/music`, so the collection is not
+deleted or copied into rollback snapshots.
+
+The repository variable `DEPLOY_TARGET` contains the SSH target used by the Justin runner.
+To start the same workflow manually from a development machine with an authenticated
+GitHub CLI:
+
 ```bash
-export DEPLOY_TARGET=user@host
 ./publish.sh
-DEPLOY_TARGET=user@host TARGET_DIR=apps/music ./publish.sh
+REF=main ./publish.sh
 ```
 
-`DEPLOY_TARGET` is required. This publishes a self-contained, compressed single-file binary
-for `linux-arm64`, syncs it to the Pi (without wiping the music folder), installs
-`deploy/kestrel-music.service` as a systemd unit and starts it.
+`publish.sh` only dispatches GitHub Actions; it no longer cross-compiles or deploys from the
+x64 development laptop. The service unit remains managed independently on the Pi.
 
 The result is one executable of roughly 47 MB plus `appsettings.json` and the control page.
-Nothing else has to be installed on the Pi: no .NET runtime, no snap, no container. Set
-`PUBLISH_RID` for another target, for example `linux-x64` or `linux-arm` for an older Pi.
+Nothing else has to be installed on the Pi: no .NET runtime, no snap, no container. Change
+`RUNTIME` in the workflow to target a different architecture.
 
 The release project is configured for Native AOT. Publishing produces a stripped native
 executable instead of shipping the managed application assemblies. JSON responses use the
 source-generated `StreamingJsonContext`; reflection-based JSON serialization is disabled.
-The normal `publish.sh` path therefore builds AOT output for its configured RID.
+The build runs natively on the ARM64 Justin runner and deploys the resulting executable to
+the ARM64 Raspberry Pi.
 
 ## Quality checks
 

@@ -1,56 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 
-# Build output and deployment are configurable through environment variables.
-# Example:
-#   DEPLOY_TARGET=pi@raspberrypi.local TARGET_DIR=apps/music ./publish.sh
-
-DEPLOY_TARGET="${DEPLOY_TARGET:-}"
-[[ -n "$DEPLOY_TARGET" ]] || { echo "DEPLOY_TARGET is not set, for example: DEPLOY_TARGET=pi@raspberrypi.local" >&2; exit 1; }
-TARGET_DIR="${TARGET_DIR:-apps/music}"
-SERVICE_NAME="${SERVICE_NAME:-kestrel-music}"
-PUBLISH_RID="${PUBLISH_RID:-linux-arm64}"
-
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$SCRIPT_DIR"
-SOURCE_PROJECT="$PROJECT_DIR/src/Streaming/streaming.csproj"
-OUTDIR="$PROJECT_DIR/out/publish"
-SERVICE_FILE="${SERVICE_FILE:-$PROJECT_DIR/deploy/kestrel-music.service}"
-
-REMOTE_USER="${DEPLOY_TARGET%%@*}"
-
-echo "Publishing to $OUTDIR"
-rm -rf "$OUTDIR"
-dotnet publish "$SOURCE_PROJECT" -r "$PUBLISH_RID" -c Release --self-contained true -o "$OUTDIR"
-
-if [[ ! -d "$OUTDIR" ]] || [[ -z "$(find "$OUTDIR" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
-  echo "Publish output is missing in $OUTDIR"
+command -v gh > /dev/null || {
+  echo "GitHub CLI (gh) is required to start the deployment workflow." >&2
   exit 1
-fi
+}
 
-echo "Stopping $SERVICE_NAME on $DEPLOY_TARGET"
-ssh "$DEPLOY_TARGET" "sudo systemctl stop $SERVICE_NAME || true"
+REF="${REF:-main}"
+REPOSITORY="${REPOSITORY:-egbertn/streaming}"
 
-echo "Creating target directory"
-ssh "$DEPLOY_TARGET" "mkdir -p \"\$HOME/$TARGET_DIR\""
-
-# The music collection lives on the Pi itself and must not be wiped by --delete.
-echo "Syncing files"
-rsync -az --delete --exclude 'wwwroot/music/***' "$OUTDIR/" "$DEPLOY_TARGET:$TARGET_DIR/"
-
-REMOTE_UNIT="/etc/systemd/system/$SERVICE_NAME.service"
-
-# Never overwrite a unit that was tuned on the target; only install it the first time.
-if ssh "$DEPLOY_TARGET" "test -f $REMOTE_UNIT"; then
-  echo "Keeping existing $REMOTE_UNIT"
-elif [[ -f "$SERVICE_FILE" ]]; then
-  echo "Installing systemd service"
-  sed -e "s#__USER__#$REMOTE_USER#g" -e "s#__DIR__#/home/$REMOTE_USER/$TARGET_DIR#g" "$SERVICE_FILE" \
-    | ssh "$DEPLOY_TARGET" "sudo tee $REMOTE_UNIT > /dev/null"
-  ssh "$DEPLOY_TARGET" "sudo systemctl daemon-reload && sudo systemctl enable $SERVICE_NAME"
-else
-  echo "Service file not found at $SERVICE_FILE, skipping systemd install"
-fi
-
-echo "Starting $SERVICE_NAME"
-ssh "$DEPLOY_TARGET" "sudo systemctl start $SERVICE_NAME && sudo systemctl status $SERVICE_NAME --no-pager"
+gh workflow run deploy.yml --repo "$REPOSITORY" --ref "$REF"
+echo "Deployment requested for $REPOSITORY at $REF."
+gh run list --repo "$REPOSITORY" --workflow deploy.yml --limit 1
