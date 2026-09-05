@@ -13,7 +13,7 @@ public sealed class PdfDocumentTests
         doc.DrawText("Een gewone regel tekst met speciale tekens: (haakjes) & \\backslashes\\", 50, 80, PdfDocument.FontType.Helvetica, 10);
         doc.FillRect(50, 100, 200, 30, PdfDocument.PdfColor.PrimaryGreen);
         doc.DrawLine(50, 150, 300, 150, PdfDocument.PdfColor.BorderGray);
-        doc.DrawBadge("VRIJ", 50, 160, PdfDocument.PdfColor.BadgeGreenBg, PdfDocument.PdfColor.BadgeGreenFg);
+        doc.DrawBadge("FREE", 50, 160, PdfDocument.PdfColor.BadgeGreenBg, PdfDocument.PdfColor.BadgeGreenFg);
 
         var bytes = doc.Build();
 

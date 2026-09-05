@@ -210,8 +210,8 @@ public sealed class MusicReportService : IMusicReportService
         {
             return new TrackCopyrightDetails(
                 TrackCopyrightStatus.Free,
-                "VRIJ (LICENTIE)",
-                $"Vrije licentie / publiek domein gedetecteerd in copyright-tag: \"{copyrightTag}\"",
+                "FREE (LICENTIE)",
+                $"Free license / public domain detected in copyright tag: \"{copyrightTag}\"",
                 copyrightTag, publisher, isrc, matchedFreeLicense);
         }
 
@@ -219,8 +219,18 @@ public sealed class MusicReportService : IMusicReportService
         {
             return new TrackCopyrightDetails(
                 TrackCopyrightStatus.Free,
-                "VRIJ (COMM)",
-                $"Vrije licentie / publiek domein gedetecteerd in opmerking: \"{comment}\"",
+                "FREE (COMM)",
+                $"Free license / public domain detected in comment: \"{comment}\"",
+                copyrightTag, publisher, isrc, matchedFreeLicense);
+        }
+
+        var fileName = Path.GetFileNameWithoutExtension(fullPath);
+        if (ContainsAny(fileName, FreeLicenseMarkers, out matchedFreeLicense))
+        {
+            return new TrackCopyrightDetails(
+                TrackCopyrightStatus.Free,
+                "FREE (BESTANDSNAAM)",
+                $"Free license / public domain detected in file name: \"{fileName}\"",
                 copyrightTag, publisher, isrc, matchedFreeLicense);
         }
 

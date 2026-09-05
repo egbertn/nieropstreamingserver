@@ -68,7 +68,7 @@ public sealed class EmailReportServiceTests
                 "MP3",
                 new TrackCopyrightDetails(
                     TrackCopyrightStatus.Free,
-                    "VRIJ",
+                    "FREE",
                     "Geen copyright restricties",
                     null,
                     null,

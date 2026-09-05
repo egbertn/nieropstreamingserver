@@ -44,6 +44,20 @@ public sealed class MusicReportServiceTests : IDisposable
     }
 
     [Fact]
+    public void CollectReportData_FileNameContainsCc0_ClassifiesTrackAsFree()
+    {
+        File.WriteAllBytes(Path.Combine(_tempMusicDir, "HoliznaCC0 - Doodles.mp3"), []);
+        var service = new MusicReportService(_tempMusicDir);
+
+        var data = service.CollectReportData();
+
+        var track = Assert.Single(data.Tracks);
+        Assert.Equal(TrackCopyrightStatus.Free, track.Copyright.Status);
+        Assert.Equal("FREE (BESTANDSNAAM)", track.Copyright.BadgeText);
+        Assert.Equal("cc0", track.Copyright.LicenseMarker);
+    }
+
+    [Fact]
     public void GeneratePdfReport_EmptyDirectory_ReturnsValidPdf()
     {
         var service = new MusicReportService(_tempMusicDir);
@@ -79,7 +93,7 @@ public sealed class MusicReportServiceTests : IDisposable
             "MP3",
             new TrackCopyrightDetails(
                 TrackCopyrightStatus.Free,
-                "VRIJ (LICENTIE)",
+                "FREE (LICENTIE)",
                 "Creative Commons Zero (CC0)",
                 "CC0 1.0 Universal",
                 null,
