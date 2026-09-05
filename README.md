@@ -58,6 +58,9 @@ no sound passes through the till PC.
 | `DELETE /api/tracks/{path}` | delete a single file from the music folder |
 | `GET /playlist.m3u` | M3U with absolute URLs |
 | `GET /tracks` | plain HTML file listing |
+| `GET /report` | collection report page with PDF preview, download and email options |
+| `GET /report/pdf` | PDF report containing all tracks, durations, metadata tags and copyright status |
+| `POST /api/report/email` | send the generated PDF report via email (configured via `Streaming:Smtp`) |
 | `GET /health` | status and number of tracks found |
 | `GET /api/speakers` | discovered speakers (`?refresh=true` forces a new search) |
 | `GET /api/state` | `PLAYING`, `PAUSED_PLAYBACK` or `STOPPED` |

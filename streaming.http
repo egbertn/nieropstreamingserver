@@ -12,3 +12,20 @@ GET {{streaming_HostAddress}}/playlist.m3u
 GET {{streaming_HostAddress}}/health
 
 ###
+
+GET {{streaming_HostAddress}}/report
+
+###
+
+GET {{streaming_HostAddress}}/report/pdf
+
+###
+
+POST {{streaming_HostAddress}}/api/report/email
+Content-Type: application/json
+
+{
+  "email": "test@example.com"
+}
+
+###

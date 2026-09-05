@@ -12,6 +12,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSystemd();
 
 builder.Services.AddHttpClient<SonosService>(c => c.Timeout = TimeSpan.FromSeconds(10));
+builder.Services.AddSingleton<IMusicReportService, MusicReportService>();
+builder.Services.AddSingleton<IEmailReportService, EmailReportService>();
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.TypeInfoResolverChain.Insert(0, StreamingJsonContext.Default));
 
@@ -186,7 +188,7 @@ app.MapGet("/playlist.m3u", (HttpRequest request) =>
 app.MapGet("/tracks", (HttpRequest request) =>
 {
     var sb = new StringBuilder("<!doctype html><meta charset=\"utf-8\"><title>Muziek</title><h1>Muziek</h1>");
-    sb.Append("<p><a href=\"/playlist.m3u\">playlist.m3u</a> &middot; <a href=\"/api/tracks\">api/tracks</a></p><ul>");
+    sb.Append("<p><a href=\"/playlist.m3u\">playlist.m3u</a> &middot; <a href=\"/api/tracks\">api/tracks</a> &middot; <a href=\"/report\">Rapport (PDF)</a></p><ul>");
     foreach (var track in EnumerateTracks())
     {
         var url = UrlFor(request, track);
@@ -195,6 +197,203 @@ app.MapGet("/tracks", (HttpRequest request) =>
     }
     sb.Append("</ul>");
     return Results.Content(sb.ToString(), "text/html", Encoding.UTF8);
+});
+
+app.MapGet("/report", (HttpRequest request, IMusicReportService reportService) =>
+{
+    if (request.Query.ContainsKey("download") || request.Query["format"] == "pdf" || request.Headers.Accept.ToString().Contains("application/pdf"))
+    {
+        var pdf = reportService.GeneratePdfReport();
+        var download = request.Query.ContainsKey("download") && request.Query["download"] != "false";
+        return Results.File(pdf, "application/pdf", fileDownloadName: download ? "muziek-rapport.pdf" : null);
+    }
+
+    var data = reportService.CollectReportData();
+    var durationFormatted = data.TotalDuration.TotalHours >= 1
+        ? $"{(int)data.TotalDuration.TotalHours}u {data.TotalDuration.Minutes:D2}m {data.TotalDuration.Seconds:D2}s"
+        : $"{data.TotalDuration.Minutes:D2}m {data.TotalDuration.Seconds:D2}s";
+
+    var sizeMb = data.TotalSizeBytes / (1024f * 1024f);
+    var sizeFormatted = sizeMb >= 1000f ? $"{(sizeMb / 1024f):0.##} GB" : $"{sizeMb:0.#} MB";
+
+    var sb = new StringBuilder();
+    sb.Append($$"""
+        <!doctype html>
+        <html lang="nl">
+        <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Muziekcollectie Rapport</title>
+        <style>
+          :root { color-scheme: light dark; }
+          body { font-family: system-ui, sans-serif; margin: 0; padding: 2rem; max-width: 52rem; }
+          h1 { font-size: 1.5rem; margin-top: 0; color: #2d7d46; }
+          .nav { margin-bottom: 1.5rem; font-size: 0.95rem; }
+          .nav a { color: #2d7d46; text-decoration: none; }
+          .nav a:hover { text-decoration: underline; }
+          .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem; }
+          .stat-card { border: 1px solid #8884; border-radius: 0.5rem; padding: 0.75rem 1rem; background: #8881; }
+          .stat-card .label { font-size: 0.75rem; text-transform: uppercase; opacity: 0.7; font-weight: 600; }
+          .stat-card .val { font-size: 1.25rem; font-weight: 700; margin-top: 0.25rem; }
+          .actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; align-items: center; }
+          .btn { display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; padding: 0.6rem 1.2rem; border-radius: 0.5rem; border: 1px solid #8888; text-decoration: none; color: inherit; cursor: pointer; background: #8881; font-weight: 500; }
+          .btn:hover { background: #8883; }
+          .btn.primary { background: #2d7d46; color: #fff; border-color: #2d7d46; }
+          .email-box { border: 1px solid #8884; border-radius: 0.5rem; padding: 1.25rem; background: #8881; margin-bottom: 1.5rem; }
+          .email-box h2 { font-size: 1.1rem; margin-top: 0; margin-bottom: 0.75rem; }
+          .email-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+          .email-row input[type=email] { flex: 1; min-width: 220px; font-size: 1rem; padding: 0.6rem 0.8rem; border-radius: 0.5rem; border: 1px solid #8888; background: inherit; color: inherit; }
+          #emailStatus { margin-top: 0.75rem; font-size: 0.95rem; min-height: 1.4rem; font-weight: 500; }
+          .preview-section { margin-top: 1.5rem; }
+          .preview-section h2 { font-size: 1.1rem; margin-bottom: 0.75rem; }
+          iframe { width: 100%; height: 600px; border: 1px solid #8884; border-radius: 0.5rem; }
+        </style>
+        </head>
+        <body>
+        <div class="nav">
+          <a href="/">&larr; Terug naar Muziekbediening</a> &middot; <a href="/tracks">Lijstweergave</a>
+        </div>
+        <h1>Muziekcollectie Rapport</h1>
+
+        <div class="stats-grid">
+          <div class="stat-card"><div class="label">Nummers</div><div class="val">{{data.Tracks.Count}}</div></div>
+          <div class="stat-card"><div class="label">Speelduur</div><div class="val">{{durationFormatted}}</div></div>
+          <div class="stat-card"><div class="label">Grootte</div><div class="val">{{sizeFormatted}}</div></div>
+          <div class="stat-card"><div class="label">Vrij / CC</div><div class="val" style="color: #2d7d46;">{{data.FreeCount}}</div></div>
+          <div class="stat-card"><div class="label">Beschermd</div><div class="val" style="color: #dc2626;">{{data.ProtectedCount}}</div></div>
+          <div class="stat-card"><div class="label">Geen tags</div><div class="val">{{data.UnspecifiedCount}}</div></div>
+        </div>
+
+        <div class="actions">
+          <a href="/report/pdf?download=true" class="btn primary">📥 Download PDF</a>
+          <a href="/report/pdf" target="_blank" class="btn">📄 Open PDF in nieuw tabblad</a>
+        </div>
+
+        <div class="email-box">
+          <h2>✉️ Rapport per E-mail versturen</h2>
+          <form id="emailForm" onsubmit="event.preventDefault(); sendEmail();">
+            <div class="email-row">
+              <input type="email" id="emailAddress" placeholder="naam@voorbeeld.nl" required>
+              <button type="submit" id="btnSendEmail" class="btn primary">Verstuur PDF</button>
+            </div>
+            <div id="emailStatus"></div>
+          </form>
+        </div>
+
+        <div class="preview-section">
+          <h2>Voorvertoning van PDF</h2>
+          <iframe src="/report/pdf" title="PDF Rapport Voorvertoning"></iframe>
+        </div>
+
+        <script>
+        async function sendEmail() {
+          const emailInput = document.getElementById('emailAddress');
+          const statusEl = document.getElementById('emailStatus');
+          const btn = document.getElementById('btnSendEmail');
+          const email = emailInput.value.trim();
+
+          if (!email) {
+            statusEl.textContent = 'Vul een geldig e-mailadres in.';
+            statusEl.style.color = '#ef4444';
+            return;
+          }
+
+          btn.disabled = true;
+          statusEl.textContent = 'Bezig met versturen...';
+          statusEl.style.color = 'inherit';
+
+          try {
+            const token = localStorage.getItem('apiToken');
+            const res = await fetch('/report/email', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { 'X-Api-Token': token } : {})
+              },
+              body: JSON.stringify({ email: email })
+            });
+
+            const data = await res.json();
+            if (res.ok && data.success) {
+              statusEl.textContent = '✓ ' + data.message;
+              statusEl.style.color = '#2d7d46';
+            } else {
+              statusEl.textContent = '✗ ' + (data.error || data.message || 'Verzenden mislukt');
+              statusEl.style.color = '#ef4444';
+            }
+          } catch (err) {
+            statusEl.textContent = '✗ Fout: ' + err.message;
+            statusEl.style.color = '#ef4444';
+          } finally {
+            btn.disabled = false;
+          }
+        }
+        </script>
+        </body>
+        </html>
+        """);
+
+    return Results.Content(sb.ToString(), "text/html", Encoding.UTF8);
+});
+
+app.MapGet("/report/pdf", (IMusicReportService reportService, bool download = false) =>
+{
+    var pdf = reportService.GeneratePdfReport();
+    return Results.File(pdf, "application/pdf", fileDownloadName: download ? "muziek-rapport.pdf" : null);
+});
+
+app.MapGet("/report/download", (IMusicReportService reportService) =>
+{
+    var pdf = reportService.GeneratePdfReport();
+    return Results.File(pdf, "application/pdf", fileDownloadName: "muziek-rapport.pdf");
+});
+
+app.MapPost("/report/email", async (HttpRequest request, IEmailReportService emailService, CancellationToken ct) =>
+{
+    string? email = null;
+    if (request.HasJsonContentType())
+    {
+        var body = await request.ReadFromJsonAsync(StreamingJsonContext.Default.EmailReportRequest, ct);
+        email = body?.Email;
+    }
+    else if (request.HasFormContentType)
+    {
+        var form = await request.ReadFormAsync(ct);
+        email = form["email"].ToString();
+    }
+    else
+    {
+        email = request.Query["email"].ToString();
+    }
+
+    if (string.IsNullOrWhiteSpace(email))
+        return Results.BadRequest(new EmailReportResponse(false, "E-mailadres ontbreekt"));
+
+    try
+    {
+        await emailService.SendReportAsync(email, ct);
+        return Results.Ok(new EmailReportResponse(true, $"Het rapport is succesvol gemaild naar {email}"));
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new EmailReportResponse(false, ex.Message));
+    }
+});
+
+app.MapPost("/api/report/email", async (EmailReportRequest request, IEmailReportService emailService, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Email))
+        return Results.BadRequest(new EmailReportResponse(false, "E-mailadres ontbreekt"));
+
+    try
+    {
+        await emailService.SendReportAsync(request.Email, ct);
+        return Results.Ok(new EmailReportResponse(true, $"Het rapport is succesvol gemaild naar {request.Email}"));
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new EmailReportResponse(false, ex.Message));
+    }
 });
 
 app.MapGet("/health", () => Results.Ok(new HealthResponse("ok", EnumerateTracks().Count())));

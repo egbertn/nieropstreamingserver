@@ -11,6 +11,12 @@ ExecStart=__DIR__/streaming
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=DOTNET_PrintTelemetryMessage=false
 Environment=Streaming__Port=8080
+Environment=Smtp__Host=localhost
+Environment=Smtp__Port=587
+Environment=Smtp__From=Music-report@local
+Environment=Smtp__FromName="Sonus Muziek Server"
+Environment=Smtp__UseSsl=true
+
 # Set Streaming__ApiToken through a systemd override or environment file.
 User=__USER__
 Group=__USER__

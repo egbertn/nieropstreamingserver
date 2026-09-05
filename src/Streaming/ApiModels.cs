@@ -26,6 +26,10 @@ public sealed record PlayResponse(string Speaker, int Tracks);
 
 public sealed record SpeakerResponse(string Speaker);
 
+public sealed record EmailReportRequest(string Email);
+
+public sealed record EmailReportResponse(bool Success, string Message);
+
 [JsonSourceGenerationOptions(JsonSerializerDefaults.Web, DefaultIgnoreCondition = JsonIgnoreCondition.Never)]
 [JsonSerializable(typeof(ErrorResponse))]
 [JsonSerializable(typeof(SonosErrorResponse))]
@@ -36,6 +40,8 @@ public sealed record SpeakerResponse(string Speaker);
 [JsonSerializable(typeof(StateResponse))]
 [JsonSerializable(typeof(PlayResponse))]
 [JsonSerializable(typeof(SpeakerResponse))]
+[JsonSerializable(typeof(EmailReportRequest))]
+[JsonSerializable(typeof(EmailReportResponse))]
 [JsonSerializable(typeof(SonosSpeaker[]))]
 [JsonSerializable(typeof(IReadOnlyList<SonosSpeaker>))]
 public partial class StreamingJsonContext : JsonSerializerContext;
