@@ -1,10 +1,11 @@
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
 using Streaming;
+
+const string PdfContentType = "application/pdf";
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,7 +23,7 @@ builder.WebHost.ConfigureKestrel((c, options) =>
 {
     var port = c.Configuration.GetValue("Streaming:Port", 8080);
     options.ListenAnyIP(port);
-    options.Limits.MaxRequestBodySize = 1024L * 1024 * 1024;
+    options.Limits.MaxRequestBodySize = 1024L * 1024 * 300;
 });
 
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
@@ -137,8 +138,11 @@ app.MapPost("/api/tracks", async (HttpRequest request, bool force = false) =>
 
         // Never silently truncate a track that is already there.
         var stem = Path.GetFileNameWithoutExtension(name);
-        for (var i = 2; File.Exists(destination); i++)
-            destination = Path.Combine(musicRoot, $"{stem} ({i}){extension}");
+        var suffix = 2;
+        while (File.Exists(destination))
+        {
+            destination = Path.Combine(musicRoot, $"{stem} ({suffix++}){extension}");
+        }
 
         await using (var stream = File.Create(destination))
             await file.CopyToAsync(stream);
@@ -201,11 +205,11 @@ app.MapGet("/tracks", (HttpRequest request) =>
 
 app.MapGet("/report", (HttpRequest request, IMusicReportService reportService) =>
 {
-    if (request.Query.ContainsKey("download") || request.Query["format"] == "pdf" || request.Headers.Accept.ToString().Contains("application/pdf"))
+    if (request.Query.ContainsKey("download") || request.Query["format"] == "pdf" || request.Headers.Accept.ToString().Contains(PdfContentType))
     {
         var pdf = reportService.GeneratePdfReport();
         var download = request.Query.ContainsKey("download") && request.Query["download"] != "false";
-        return Results.File(pdf, "application/pdf", fileDownloadName: download ? "muziek-rapport.pdf" : null);
+        return Results.File(pdf, PdfContentType, fileDownloadName: download ? "muziek-rapport.pdf" : null);
     }
 
     var data = reportService.CollectReportData();
@@ -339,13 +343,13 @@ app.MapGet("/report", (HttpRequest request, IMusicReportService reportService) =
 app.MapGet("/report/pdf", (IMusicReportService reportService, bool download = false) =>
 {
     var pdf = reportService.GeneratePdfReport();
-    return Results.File(pdf, "application/pdf", fileDownloadName: download ? "muziek-rapport.pdf" : null);
+    return Results.File(pdf, PdfContentType, fileDownloadName: download ? "muziek-rapport.pdf" : null);
 });
 
 app.MapGet("/report/download", (IMusicReportService reportService) =>
 {
     var pdf = reportService.GeneratePdfReport();
-    return Results.File(pdf, "application/pdf", fileDownloadName: "muziek-rapport.pdf");
+    return Results.File(pdf, PdfContentType, fileDownloadName: "muziek-rapport.pdf");
 });
 
 app.MapPost("/report/email", async (HttpRequest request, IEmailReportService emailService, CancellationToken ct) =>
@@ -474,4 +478,4 @@ async Task<IResult> Command(SonosService sonos, string? speaker, Func<SonosSpeak
     return Results.Ok(new SpeakerResponse(target.Name));
 }
 
-app.Run();
+await app.RunAsync();

@@ -150,14 +150,10 @@ public sealed class MusicReportService : IMusicReportService
                 if (tag != null)
                 {
                     title = string.IsNullOrWhiteSpace(tag.Title) ? null : tag.Title.Trim();
-                    artist = tag.Performers != null && tag.Performers.Length > 0
-                        ? string.Join(", ", tag.Performers.Where(p => !string.IsNullOrWhiteSpace(p))).Trim()
-                        : (string.IsNullOrWhiteSpace(tag.FirstPerformer) ? null : tag.FirstPerformer.Trim());
+                    artist = FirstTagValue(tag.Performers, tag.FirstPerformer);
                     album = string.IsNullOrWhiteSpace(tag.Album) ? null : tag.Album.Trim();
                     year = tag.Year > 0 ? tag.Year : null;
-                    genre = tag.Genres != null && tag.Genres.Length > 0
-                        ? string.Join(", ", tag.Genres.Where(g => !string.IsNullOrWhiteSpace(g))).Trim()
-                        : (string.IsNullOrWhiteSpace(tag.FirstGenre) ? null : tag.FirstGenre.Trim());
+                    genre = FirstTagValue(tag.Genres, tag.FirstGenre);
 
                     copyrightTag = string.IsNullOrWhiteSpace(tag.Copyright) ? null : tag.Copyright.Trim();
                     publisher = string.IsNullOrWhiteSpace(tag.Publisher) ? null : tag.Publisher.Trim();
@@ -295,6 +291,14 @@ public sealed class MusicReportService : IMusicReportService
         return false;
     }
 
+    private static string? FirstTagValue(string[]? values, string? firstValue)
+    {
+        if (values is { Length: > 0 })
+            return string.Join(", ", values.Where(value => !string.IsNullOrWhiteSpace(value))).Trim();
+
+        return string.IsNullOrWhiteSpace(firstValue) ? null : firstValue.Trim();
+    }
+
     public byte[] GeneratePdfReport(MusicReportData? data = null)
     {
         data ??= CollectReportData();
@@ -335,7 +339,7 @@ public sealed class MusicReportService : IMusicReportService
             doc.DrawLine(PdfDocument.MarginLeft, footerY - 6f, PdfDocument.MarginLeft + PdfDocument.ContentWidth, footerY - 6f, PdfDocument.PdfColor.BorderGray, 0.5f);
             doc.DrawText("Sonos Streaming Server  -  /report", PdfDocument.MarginLeft, footerY, PdfDocument.FontType.Helvetica, 8f, PdfDocument.PdfColor.Gray);
             var pageText = $"Pagina {pageIdx + 1} van {totalPages}";
-            var pageTextWidth = doc.MeasureTextWidth(pageText, PdfDocument.FontType.Helvetica, 8f);
+            var pageTextWidth = PdfDocument.MeasureTextWidth(pageText, PdfDocument.FontType.Helvetica, 8f);
             doc.DrawText(pageText, PdfDocument.MarginLeft + PdfDocument.ContentWidth - pageTextWidth, footerY, PdfDocument.FontType.Helvetica, 8f, PdfDocument.PdfColor.Gray);
         }
 
@@ -438,7 +442,7 @@ public sealed class MusicReportService : IMusicReportService
             _ => (PdfDocument.PdfColor.BadgeGrayBg, PdfDocument.PdfColor.BadgeGrayFg)
         };
         var badgeText = track.Copyright.BadgeText;
-        var badgeWidth = doc.MeasureTextWidth(badgeText, PdfDocument.FontType.HelveticaBold, 7.5f) + 10f;
+        var badgeWidth = PdfDocument.MeasureTextWidth(badgeText, PdfDocument.FontType.HelveticaBold, 7.5f) + 10f;
         var badgeX = x + width - badgeWidth - 8f;
         doc.DrawBadge(badgeText, badgeX, headerY - 1f, badgeBg, badgeFg, PdfDocument.FontType.HelveticaBold, 7.5f);
 

@@ -40,6 +40,7 @@ public interface IEmailReportService
 
 public sealed class EmailReportService : IEmailReportService
 {
+    private const string PdfContentType = "application/pdf";
     private readonly IConfiguration _configuration;
     private readonly IMusicReportService _reportService;
     private readonly ILogger<EmailReportService> _logger;
@@ -113,12 +114,10 @@ public sealed class EmailReportService : IEmailReportService
         var bodyBuilder = new BodyBuilder();
 
         var totalHours = (int)data.TotalDuration.TotalHours;
-        var durationText = totalHours > 0
-            ? $"{totalHours}u {data.TotalDuration.Minutes:D2}m {data.TotalDuration.Seconds:D2}s"
-            : $"{data.TotalDuration.Minutes:D2}m {data.TotalDuration.Seconds:D2}s";
+        var durationText = FormatDuration(data.TotalDuration, totalHours);
 
         var sizeMb = data.TotalSizeBytes / (1024f * 1024f);
-        var sizeText = sizeMb >= 1000f ? $"{(sizeMb / 1024f):0.##} GB" : $"{sizeMb.ToString("0.#", CultureInfo.InvariantCulture)} MB";
+        var sizeText = FormatSize(sizeMb);
 
         bodyBuilder.TextBody = $"""
             Beste,
@@ -200,4 +199,14 @@ public sealed class EmailReportService : IEmailReportService
         var atIndex = mailbox.Address.IndexOf('@');
         return atIndex > 0 && atIndex < mailbox.Address.Length - 1 && mailbox.Address.IndexOf('.', atIndex) > atIndex;
     }
+
+    private static string FormatDuration(TimeSpan duration, int totalHours) =>
+        totalHours > 0
+            ? $"{totalHours}u {duration.Minutes:D2}m {duration.Seconds:D2}s"
+            : $"{duration.Minutes:D2}m {duration.Seconds:D2}s";
+
+    private static string FormatSize(float sizeMb) =>
+        sizeMb >= 1000f
+            ? $"{sizeMb / 1024f:0.##} GB"
+            : $"{sizeMb:0.#} MB";
 }

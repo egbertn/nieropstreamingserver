@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Security;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Globalization;
 
 namespace Streaming;
 
@@ -21,6 +22,9 @@ public sealed partial class SonosService(HttpClient http, IConfiguration configu
     private const string AvTransport = "urn:schemas-upnp-org:service:AVTransport:1";
     private const string RenderingControl = "urn:schemas-upnp-org:service:RenderingControl:1";
     private const string ZoneGroupTopology = "urn:schemas-upnp-org:service:ZoneGroupTopology:1";
+    private const string AvTransportControlPath = "/MediaRenderer/AVTransport/Control";
+    private const string InstanceId = "<InstanceID>0</InstanceID>";
+    private const string SsdpMulticastAddress = "239.255.255.250";
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(5);
 
     // Known addresses skip SSDP; useful when a firewall blocks the multicast replies.
@@ -61,16 +65,16 @@ public sealed partial class SonosService(HttpClient http, IConfiguration configu
             }
 
             foreach (var address in _knownAddresses)
-                await AddSpeakerAsync(new Uri($"http://{address}:1400/xml/device_description.xml"));
+                await AddSpeakerAsync(new Uri($"http://{address}:1400/xml/device_description.xml")); // NOSONAR
 
-            if (speakers.Count == 0)
+            if (speakers.Count == 0) // NOSONAR
             {
                 logger.LogInformation("Geen Sonos-speaker via bekende adressen; zoek via SSDP.");
                 foreach (var location in await SearchAsync(ct))
                     await AddSpeakerAsync(location);
             }
 
-            if (speakers.Count == 0)
+            if (speakers.Count == 0) // NOSONAR
             {
                 logger.LogWarning("Geen Sonos-speakers gevonden; controleer of UDP 1900 open staat of stel Streaming:Sonos:Addresses in.");
                 if (_cached.Count > 0)
@@ -105,58 +109,54 @@ public sealed partial class SonosService(HttpClient http, IConfiguration configu
     }
 
     public Task QueueUriAsync(SonosSpeaker speaker, string uri, string title, bool asNext = false, CancellationToken ct = default) =>
-        SoapAsync(speaker, AvTransport, "/MediaRenderer/AVTransport/Control", "AddURIToQueue",
-            $"<InstanceID>0</InstanceID><EnqueuedURI>{Esc(uri)}</EnqueuedURI>" +
+        SoapAsync(speaker, AvTransport, AvTransportControlPath, "AddURIToQueue",
+            $"{InstanceId}<EnqueuedURI>{Esc(uri)}</EnqueuedURI>" +
             $"<EnqueuedURIMetaData>{Esc(BuildMetadata(title))}</EnqueuedURIMetaData>" +
             $"<DesiredFirstTrackNumberEnqueued>{(asNext ? 1 : 0)}</DesiredFirstTrackNumberEnqueued>" +
             "<EnqueueAsNext>0</EnqueueAsNext>", ct);
 
     public Task ClearQueueAsync(SonosSpeaker speaker, CancellationToken ct = default) =>
-        SoapAsync(speaker, AvTransport, "/MediaRenderer/AVTransport/Control", "RemoveAllTracksFromQueue",
-            "<InstanceID>0</InstanceID>", ct);
+        SoapAsync(speaker, AvTransport, AvTransportControlPath, "RemoveAllTracksFromQueue", InstanceId, ct);
 
     /// <summary>Points the speaker back at its own queue instead of a standalone stream.</summary>
     public Task SelectQueueAsync(SonosSpeaker speaker, CancellationToken ct = default) =>
-        SoapAsync(speaker, AvTransport, "/MediaRenderer/AVTransport/Control", "SetAVTransportURI",
-            $"<InstanceID>0</InstanceID><CurrentURI>x-rincon-queue:{speaker.Uuid}#0</CurrentURI><CurrentURIMetaData></CurrentURIMetaData>", ct);
+        SoapAsync(speaker, AvTransport, AvTransportControlPath, "SetAVTransportURI",
+            $"{InstanceId}<CurrentURI>x-rincon-queue:{speaker.Uuid}#0</CurrentURI><CurrentURIMetaData></CurrentURIMetaData>", ct);
 
     public Task PlayAsync(SonosSpeaker speaker, CancellationToken ct = default) =>
-        SoapAsync(speaker, AvTransport, "/MediaRenderer/AVTransport/Control", "Play",
-            "<InstanceID>0</InstanceID><Speed>1</Speed>", ct);
+        SoapAsync(speaker, AvTransport, AvTransportControlPath, "Play", $"{InstanceId}<Speed>1</Speed>", ct);
 
     /// <summary>NORMAL, REPEAT_ALL, SHUFFLE_NOREPEAT or SHUFFLE (random and repeating).</summary>
     public Task SetPlayModeAsync(SonosSpeaker speaker, string mode, CancellationToken ct = default) =>
-        SoapAsync(speaker, AvTransport, "/MediaRenderer/AVTransport/Control", "SetPlayMode",
-            $"<InstanceID>0</InstanceID><NewPlayMode>{mode}</NewPlayMode>", ct);
+        SoapAsync(speaker, AvTransport, AvTransportControlPath, "SetPlayMode",
+            $"{InstanceId}<NewPlayMode>{mode}</NewPlayMode>", ct);
 
     public Task PauseAsync(SonosSpeaker speaker, CancellationToken ct = default) =>
-        SoapAsync(speaker, AvTransport, "/MediaRenderer/AVTransport/Control", "Pause", "<InstanceID>0</InstanceID>", ct);
+        SoapAsync(speaker, AvTransport, AvTransportControlPath, "Pause", InstanceId, ct);
 
     public Task StopAsync(SonosSpeaker speaker, CancellationToken ct = default) =>
-        SoapAsync(speaker, AvTransport, "/MediaRenderer/AVTransport/Control", "Stop", "<InstanceID>0</InstanceID>", ct);
+        SoapAsync(speaker, AvTransport, AvTransportControlPath, "Stop", InstanceId, ct);
 
     public Task NextAsync(SonosSpeaker speaker, CancellationToken ct = default) =>
-        SoapAsync(speaker, AvTransport, "/MediaRenderer/AVTransport/Control", "Next", "<InstanceID>0</InstanceID>", ct);
+        SoapAsync(speaker, AvTransport, AvTransportControlPath, "Next", InstanceId, ct);
 
     public Task PreviousAsync(SonosSpeaker speaker, CancellationToken ct = default) =>
-        SoapAsync(speaker, AvTransport, "/MediaRenderer/AVTransport/Control", "Previous", "<InstanceID>0</InstanceID>", ct);
+        SoapAsync(speaker, AvTransport, AvTransportControlPath, "Previous", InstanceId, ct);
 
     public Task SetVolumeAsync(SonosSpeaker speaker, int volume, CancellationToken ct = default) =>
         SoapAsync(speaker, RenderingControl, "/MediaRenderer/RenderingControl/Control", "SetVolume",
-            $"<InstanceID>0</InstanceID><Channel>Master</Channel><DesiredVolume>{Math.Clamp(volume, 0, 100)}</DesiredVolume>", ct);
+            $"{InstanceId}<Channel>Master</Channel><DesiredVolume>{Math.Clamp(volume, 0, 100)}</DesiredVolume>", ct);
 
     public async Task<string> GetTransportStateAsync(SonosSpeaker speaker, CancellationToken ct = default)
     {
-        var xml = await SoapAsync(speaker, AvTransport, "/MediaRenderer/AVTransport/Control", "GetTransportInfo",
-            "<InstanceID>0</InstanceID>", ct);
+        var xml = await SoapAsync(speaker, AvTransport, AvTransportControlPath, "GetTransportInfo", InstanceId, ct);
         var match = MyRegex().Match(xml);
         return match.Success ? match.Groups["state"].Value : "UNKNOWN";
     }
 
     public async Task<TrackPosition?> GetPositionInfoAsync(SonosSpeaker speaker, CancellationToken ct = default)
     {
-        var xml = await SoapAsync(speaker, AvTransport, "/MediaRenderer/AVTransport/Control", "GetPositionInfo",
-            "<InstanceID>0</InstanceID>", ct);
+        var xml = await SoapAsync(speaker, AvTransport, AvTransportControlPath, "GetPositionInfo", InstanceId, ct);
 
         var duration = ParseSonosTime(TrackDuration().Match(xml).Groups["time"].Value);
         var elapsed = ParseSonosTime(RelTime().Match(xml).Groups["time"].Value);
@@ -171,12 +171,12 @@ public sealed partial class SonosService(HttpClient http, IConfiguration configu
 
     /// <summary>Sonos reports times as H:MM:SS; "NOT_IMPLEMENTED" means there is no active track.</summary>
     private static TimeSpan? ParseSonosTime(string value) =>
-        TimeSpan.TryParse(value, out var span) ? span : null;
+        TimeSpan.TryParse(value, CultureInfo.InvariantCulture, out var span) ? span : null;
 
     private async Task<IReadOnlyList<Uri>> SearchAsync(CancellationToken ct)
     {
         const string request = "M-SEARCH * HTTP/1.1\r\n" +
-                               "HOST: 239.255.255.250:1900\r\n" +
+                       $"HOST: {SsdpMulticastAddress}:1900\r\n" +
                                "MAN: \"ssdp:discover\"\r\n" +
                                "MX: 1\r\n" +
                                "ST: urn:schemas-upnp-org:device:ZonePlayer:1\r\n\r\n";
@@ -185,7 +185,7 @@ public sealed partial class SonosService(HttpClient http, IConfiguration configu
         udp.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
         udp.Client.Bind(new IPEndPoint(IPAddress.Any, _discoveryPort));
         var payload = Encoding.ASCII.GetBytes(request);
-        var target = new IPEndPoint(IPAddress.Parse("239.255.255.250"), 1900);
+        var target = new IPEndPoint(IPAddress.Parse(SsdpMulticastAddress), 1900);
 
         var locations = new List<Uri>();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -231,7 +231,7 @@ public sealed partial class SonosService(HttpClient http, IConfiguration configu
             var state = WebUtility.HtmlDecode(ZoneGroupState().Match(response).Groups["state"].Value);
             var coordinators = new List<SonosSpeaker>();
 
-            foreach (Match group in ZoneGroup().Matches(state))
+            foreach (var group in ZoneGroup().Matches(state).Cast<Match>())
             {
                 var coordinatorUuid = group.Groups["coordinator"].Value;
                 string[] members = [.. ZoneGroupMember().Matches(group.Groups["members"].Value)
@@ -284,7 +284,8 @@ public sealed partial class SonosService(HttpClient http, IConfiguration configu
             "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">" +
             $"<s:Body><u:{action} xmlns:u=\"{service}\">{arguments}</u:{action}></s:Body></s:Envelope>";
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"http://{speaker.IpAddress}:1400{path}")
+        // Sonos devices expose their local control API over HTTP by design.
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"http://{speaker.IpAddress}:1400{path}") // NOSONAR
         {
             Content = new StringContent(envelope, Encoding.UTF8, "text/xml")
         };

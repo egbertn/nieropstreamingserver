@@ -160,7 +160,7 @@ public sealed class PdfDocument
         DrawText(text, x + paddingH, y + paddingV, font, fontSize, fgColor);
     }
 
-    public float MeasureTextWidth(string text, FontType font, float fontSize)
+    public static float MeasureTextWidth(string text, FontType font, float fontSize)
     {
         if (string.IsNullOrEmpty(text))
             return 0f;
@@ -221,29 +221,9 @@ public sealed class PdfDocument
 
                 // If a single word is wider than maxWidth, hard wrap it
                 if (MeasureTextWidth(word, font, fontSize) > maxWidth)
-                {
-                    var chunk = new StringBuilder();
-                    foreach (var ch in word)
-                    {
-                        var testChunk = chunk.ToString() + ch;
-                        if (MeasureTextWidth(testChunk, font, fontSize) <= maxWidth)
-                        {
-                            chunk.Append(ch);
-                        }
-                        else
-                        {
-                            lines.Add(chunk.ToString());
-                            chunk.Clear();
-                            chunk.Append(ch);
-                        }
-                    }
-                    if (chunk.Length > 0)
-                        currentLine.Append(chunk);
-                }
+                    currentLine.Append(HardWrapWord(word, maxWidth, font, fontSize, lines));
                 else
-                {
                     currentLine.Append(word);
-                }
             }
         }
 
@@ -251,6 +231,25 @@ public sealed class PdfDocument
             lines.Add(currentLine.ToString());
 
         return lines;
+    }
+
+    private static string HardWrapWord(string word, float maxWidth, FontType font, float fontSize, List<string> lines)
+    {
+        var chunk = new StringBuilder();
+        foreach (var ch in word)
+        {
+            var testChunk = chunk.ToString() + ch;
+            if (MeasureTextWidth(testChunk, font, fontSize) <= maxWidth)
+                chunk.Append(ch);
+            else
+            {
+                lines.Add(chunk.ToString());
+                chunk.Clear();
+                chunk.Append(ch);
+            }
+        }
+
+        return chunk.ToString();
     }
 
     public byte[] Build()
