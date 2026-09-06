@@ -23,7 +23,7 @@
 
   <ItemGroup>
     <PackageReference Include="MailKit" Version="4.17.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.11" />
     <PackageReference Include="TagLibSharp" Version="2.3.0" />
     <!-- TagLib discovers audio handlers through Activator at runtime. Keep its handlers in AOT output. -->
     <TrimmerRootAssembly Include="TagLibSharp" />
