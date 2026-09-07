@@ -1,7 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
-using Streaming;
 
 namespace Streaming.Tests;
 

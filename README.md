@@ -54,13 +54,16 @@ no sound passes through the till PC.
 | `GET /` | control page with Start/Pause/Stop/Next, volume, upload and track list |
 | `GET /music/{path}` | the audio file itself, with range requests (seeking works) |
 | `GET /api/tracks` | JSON list with path, title and absolute URL |
-| `POST /api/tracks` | multipart upload of one or more `audio/*` files into the music folder |
+| `POST /api/tracks` | multipart upload of one or more `audio/*` files, with optional `invoice` and per-track `license:<original-file-name>` files |
 | `DELETE /api/tracks/{path}` | delete a single file from the music folder |
 | `GET /playlist.m3u` | M3U with absolute URLs |
 | `GET /tracks` | plain HTML file listing |
-| `GET /report` | collection report page with PDF preview, download and email options |
+| `GET /report` | choose either the collection report or the playback audit |
+| `GET /report/music` | collection report page with PDF preview, download and email options |
 | `GET /report/pdf` | PDF report containing all tracks, durations, metadata tags and copyright status |
 | `POST /api/report/email` | send the generated PDF report via email (configured via `Streaming:Smtp`) |
+| `GET /report/audit/download` | ZIP download containing `speel-audit.json` |
+| `POST /report/audit/email` | send the ZIP playback audit report by email |
 | `GET /health` | status and number of tracks found |
 | `GET /api/speakers` | discovered speakers (`?refresh=true` forces a new search) |
 | `GET /api/state` | `PLAYING`, `PAUSED_PLAYBACK` or `STOPPED` |
@@ -103,6 +106,51 @@ the control page, or copy them straight onto the Pi with `rsync` or `scp`.
 The collection is read from disk on every request, so new files are available immediately
 without a restart. The files on the server together form the playlist; on `POST /api/play`
 the speaker queue is rebuilt from them and set to repeat, so the music keeps going.
+
+## Audit and evidence
+
+SQLite is the audit source of truth. `MusicFile` has a stable auto-incrementing ID and a
+unique SHA-256 checksum. The first index operation writes a `<audio-file>.checksum` cache
+beside the audio file; on a renamed file the same checksum finds and updates the existing
+catalogue record instead of creating a new identity. Existing tracks are indexed at startup.
+
+The optional purchase evidence is stored once as a BLOB in `PurchaseEvidence` and can be
+linked to multiple tracks. A license BLOB, its original filename and MIME type are stored on
+the individual `MusicFile` record. The upload dialog first accepts an optional purchase
+evidence file, then presents an optional license picker for each selected audio file.
+
+`PlayAudit` references the music-file ID. While `Streaming:Playback:UseSonos` is true, a
+background worker polls the active Sonos URI every 10 seconds. In local broadcast mode it
+reads the application's own player state instead and never discovers or contacts Sonos. In
+both modes a play is recorded only after the same track has played for at least 30 seconds.
+`PlayAuditMonthly` is rebuilt when the worker starts and once on every new UTC day. The audit
+report is a ZIP containing JSON with a UTC play-time list and monthly play count list per
+track.
+
+## USB-DAC broadcast mode
+
+Set `Streaming:Playback:UseSonos` to `false` to make this service the player. It starts
+`ffplay` for the local playlist and sends audio to Linux's default ALSA audio device. The
+USB-DAC should therefore be selected as the Pi's default output; the service unit grants the
+process the `audio` supplementary group for access to `/dev/snd`.
+
+Install the player once on the Raspberry Pi and inspect the connected DAC:
+
+```bash
+sudo apt install ffmpeg alsa-utils
+aplay -l
+```
+
+Use the system's audio settings or an ALSA configuration to make the listed USB DAC the
+default output, then configure the service:
+
+```ini
+[Service]
+Environment=Streaming__Playback__UseSonos=false
+```
+
+`ffplay` is an external OS dependency and is not included in the Native AOT executable. Set
+`Streaming:Playback:FfplayPath` when it is installed somewhere other than `ffplay` on `PATH`.
 
 ## Deploying
 
@@ -162,7 +210,11 @@ journalctl -u kestrel-music -f
 | Key | Default | Meaning |
 |---|---|---|
 | `Streaming:Port` | 8080 | listening port, bound on all interfaces |
+| `Streaming:PublicBaseUrl` | `http://raspberrypi.local:8080` | LAN URL that Sonos uses to fetch queued audio; must never be `localhost` |
 | `Streaming:ApiToken` | empty | shared secret for `/api`; empty disables the check |
+| `Streaming:DatabasePath` | `data/streaming.db` | SQLite catalogue and audit database, relative to the application directory when not absolute |
+| `Streaming:Playback:UseSonos` | `true` | `true` controls Sonos; `false` plays locally via `ffplay` to the default USB-DAC/ALSA output and audits as `Broadcast` |
+| `Streaming:Playback:FfplayPath` | `ffplay` | command or absolute path for the local broadcast audio player |
 | `Streaming:Sonos:Addresses` | empty | comma-separated speaker IPs; skips SSDP |
 | `Streaming:Sonos:DiscoveryPort` | 1901 | fixed UDP source port for SSDP, so you can open it in the firewall |
 

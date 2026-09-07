@@ -5,8 +5,6 @@ using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
 using Streaming;
 
-const string PdfContentType = "application/pdf";
-
 var builder = WebApplication.CreateBuilder(args);
 
 // Report readiness to systemd (Type=notify) and log to journald.
@@ -14,7 +12,11 @@ builder.Host.UseSystemd();
 
 builder.Services.AddHttpClient<SonosService>(c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddSingleton<IMusicReportService, MusicReportService>();
+builder.Services.AddSingleton<IAuditStorage, AuditStorage>();
+builder.Services.AddSingleton<IPlayAuditReportService, PlayAuditReportService>();
 builder.Services.AddSingleton<IEmailReportService, EmailReportService>();
+builder.Services.AddSingleton<IBroadcastPlaybackService, BroadcastPlaybackService>();
+builder.Services.AddHostedService<PlaybackAuditWorker>();
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.TypeInfoResolverChain.Insert(0, StreamingJsonContext.Default));
 
@@ -97,8 +99,15 @@ IEnumerable<string> EnumerateTracks() =>
 string UrlFor(HttpRequest request, string relativePath)
 {
     var encoded = string.Join('/', relativePath.Split('/').Select(Uri.EscapeDataString));
-    return $"{request.Scheme}://{request.Host}/music/{encoded}";
+    var publicBaseUrl = app.Configuration["Streaming:PublicBaseUrl"]?.TrimEnd('/');
+    var baseUrl = Uri.TryCreate(publicBaseUrl, UriKind.Absolute, out _) ? publicBaseUrl : $"{request.Scheme}://{request.Host}";
+    return $"{baseUrl}/music/{encoded}";
 }
+
+var auditStorage = app.Services.GetRequiredService<IAuditStorage>();
+await auditStorage.InitializeAsync();
+foreach (var track in EnumerateTracks())
+    await auditStorage.IndexTrackAsync(Path.Combine(musicRoot, track), null, null);
 
 app.MapGet("/api/tracks", (HttpRequest request) =>
     EnumerateTracks().Select(t => new TrackResponse(
@@ -115,8 +124,17 @@ app.MapPost("/api/tracks", async (HttpRequest request, bool force = false) =>
     List<string> saved = [];
     List<string> skipped = [];
     List<string> flagged = [];
+    var invoiceFile = form.Files.FirstOrDefault(candidate => candidate.Name == "invoice");
+    long? purchaseEvidenceId = null;
+    if (invoiceFile is { Length: > 0 })
+    {
+        await using var invoiceStream = new MemoryStream();
+        await invoiceFile.CopyToAsync(invoiceStream);
+        purchaseEvidenceId = await auditStorage.StorePurchaseEvidenceAsync(
+            new UploadedDocument(invoiceFile.FileName, invoiceFile.ContentType, invoiceStream.ToArray()));
+    }
 
-    foreach (var file in form.Files)
+    foreach (var file in form.Files.Where(candidate => candidate.Name == "files"))
     {
         var name = Path.GetFileName(file.FileName);
         var extension = Path.GetExtension(name);
@@ -156,6 +174,17 @@ app.MapPost("/api/tracks", async (HttpRequest request, bool force = false) =>
             continue;
         }
 
+        var licenseFile = form.Files.FirstOrDefault(candidate => candidate.Name == $"license:{file.FileName}" && candidate.Length > 0);
+        UploadedDocument? license = null;
+        if (licenseFile is not null)
+        {
+            await using var licenseStream = new MemoryStream();
+            await licenseFile.CopyToAsync(licenseStream);
+            license = new UploadedDocument(licenseFile.FileName, licenseFile.ContentType, licenseStream.ToArray());
+        }
+
+        await auditStorage.IndexTrackAsync(destination, purchaseEvidenceId, license, request.HttpContext.RequestAborted);
+
         saved.Add(Path.GetFileName(destination));
     }
 
@@ -175,6 +204,9 @@ app.MapDelete("/api/tracks/{*path}", (string path) =>
         return Results.NotFound(new ErrorResponse("Bestand bestaat niet"));
 
     File.Delete(full);
+    var checksumPath = full + ".checksum";
+    if (File.Exists(checksumPath))
+        File.Delete(checksumPath);
     return Results.Ok(new DeletedResponse(path));
 });
 
@@ -203,13 +235,19 @@ app.MapGet("/tracks", (HttpRequest request) =>
     return Results.Content(sb.ToString(), "text/html", Encoding.UTF8);
 });
 
-app.MapGet("/report", (HttpRequest request, IMusicReportService reportService) =>
+app.MapGet("/report", () => Results.Content("""
+    <!doctype html><html lang="nl"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rapporten</title><style>body{font-family:system-ui,sans-serif;margin:2rem;max-width:42rem}a{display:inline-block;margin:.5rem .5rem .5rem 0;padding:.7rem 1rem;border:1px solid #2d7d46;border-radius:.4rem;color:#2d7d46;text-decoration:none;font-weight:600}a:hover{background:#eaf5ed}</style>
+    <p><a href="/">Terug naar muziekbediening</a></p><h1>Rapporten</h1><a href="/report/music">Muziekcollectie</a><a href="/report/audit">Speel Audit</a>
+    """, "text/html", Encoding.UTF8));
+
+app.MapGet("/report/music", (HttpRequest request, IMusicReportService reportService) =>
 {
-    if (request.Query.ContainsKey("download") || request.Query["format"] == "pdf" || request.Headers.Accept.ToString().Contains(PdfContentType))
+    if (request.Query.ContainsKey("download") || request.Query["format"] == "pdf" || request.Headers.Accept.ToString().Contains(PdfDocument.PdfContentType))
     {
         var pdf = reportService.GeneratePdfReport();
         var download = request.Query.ContainsKey("download") && request.Query["download"] != "false";
-        return Results.File(pdf, PdfContentType, fileDownloadName: download ? "muziek-rapport.pdf" : null);
+        return Results.File(pdf, PdfDocument.PdfContentType, fileDownloadName: download ? "muziek-rapport.pdf" : null);
     }
 
     var data = reportService.CollectReportData();
@@ -340,16 +378,44 @@ app.MapGet("/report", (HttpRequest request, IMusicReportService reportService) =
     return Results.Content(sb.ToString(), "text/html", Encoding.UTF8);
 });
 
+app.MapGet("/report/audit", () => Results.Content("""
+    <!doctype html><html lang="nl"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Speel Audit</title><style>body{font-family:system-ui,sans-serif;margin:2rem;max-width:42rem}.btn,input{font:inherit;padding:.6rem .8rem;border:1px solid #777;border-radius:.4rem}.btn{color:#fff;background:#2d7d46;border-color:#2d7d46;cursor:pointer;text-decoration:none;display:inline-block}form{margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap}#status{min-height:1.4rem}</style>
+    <p><a href="/report">Terug naar rapporten</a></p><h1>Speel Audit</h1><p><a class="btn" href="/report/audit/download">Download ZIP met JSON</a></p><form id="form"><input id="email" type="email" placeholder="naam@voorbeeld.nl" required><button class="btn">Verstuur ZIP per e-mail</button></form><p id="status"></p>
+    <script>document.getElementById('form').onsubmit=async e=>{e.preventDefault();const s=document.getElementById('status');const token=localStorage.getItem('apiToken');const r=await fetch('/report/audit/email',{method:'POST',headers:{'Content-Type':'application/json',...(token?{'X-Api-Token':token}:{})},body:JSON.stringify({email:document.getElementById('email').value})});const d=await r.json();s.textContent=d.message||d.error||'Verzenden mislukt';};</script>
+    """, "text/html", Encoding.UTF8));
+
 app.MapGet("/report/pdf", (IMusicReportService reportService, bool download = false) =>
 {
     var pdf = reportService.GeneratePdfReport();
-    return Results.File(pdf, PdfContentType, fileDownloadName: download ? "muziek-rapport.pdf" : null);
+    return Results.File(pdf, PdfDocument.PdfContentType, fileDownloadName: download ? "muziek-rapport.pdf" : null);
 });
 
 app.MapGet("/report/download", (IMusicReportService reportService) =>
 {
     var pdf = reportService.GeneratePdfReport();
-    return Results.File(pdf, PdfContentType, fileDownloadName: "muziek-rapport.pdf");
+    return Results.File(pdf, PdfDocument.PdfContentType, fileDownloadName: "muziek-rapport.pdf");
+});
+
+app.MapGet("/report/audit/download", async (IPlayAuditReportService reportService, CancellationToken ct) =>
+{
+    var zip = await reportService.GenerateZipAsync(ct);
+    return Results.File(zip, "application/zip", "speel-audit.zip");
+});
+
+app.MapPost("/report/audit/email", async (EmailReportRequest request, IEmailReportService emailService, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Email))
+        return Results.BadRequest(new EmailReportResponse(false, "E-mailadres ontbreekt"));
+    try
+    {
+        await emailService.SendPlayAuditReportAsync(request.Email, ct);
+        return Results.Ok(new EmailReportResponse(true, $"Het speelauditrapport is succesvol gemaild naar {request.Email}"));
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new EmailReportResponse(false, ex.Message));
+    }
 });
 
 app.MapPost("/report/email", async (HttpRequest request, IEmailReportService emailService, CancellationToken ct) =>
@@ -402,10 +468,19 @@ app.MapPost("/api/report/email", async (EmailReportRequest request, IEmailReport
 
 app.MapGet("/health", () => Results.Ok(new HealthResponse("ok", EnumerateTracks().Count())));
 
-app.MapGet("/api/speakers", (SonosService sonos, bool refresh = false) => sonos.DiscoverAsync(refresh));
+bool UseSonosPlayback() => app.Configuration.GetValue("Streaming:Playback:UseSonos", true);
 
-app.MapGet("/api/state", async (SonosService sonos, string? speaker) =>
+app.MapGet("/api/speakers", (SonosService sonos, bool refresh = false) =>
+    UseSonosPlayback() ? sonos.DiscoverAsync(refresh) : Task.FromResult<IReadOnlyList<SonosSpeaker>>([new SonosSpeaker("USB-audio/DAC", "local", "broadcast")]));
+
+app.MapGet("/api/state", async (SonosService sonos, IBroadcastPlaybackService broadcast, string? speaker) =>
 {
+    if (!UseSonosPlayback())
+    {
+        var broadcastState = broadcast.GetState();
+        return Results.Ok(new StateResponse("USB-audio/DAC", broadcastState.State, broadcastState.Title, broadcastState.ElapsedSeconds, broadcastState.DurationSeconds));
+    }
+
     var target = await sonos.ResolveAsync(speaker);
     if (target is null)
         return Results.NotFound(new ErrorResponse("Geen speaker gevonden"));
@@ -420,15 +495,21 @@ app.MapGet("/api/state", async (SonosService sonos, string? speaker) =>
         position?.Duration.TotalSeconds));
 });
 
-app.MapPost("/api/play", async (SonosService sonos, HttpRequest request, string? speaker, bool shuffle = false) =>
+app.MapPost("/api/play", async (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker, bool shuffle = false) =>
 {
-    var target = await sonos.ResolveAsync(speaker);
-    if (target is null)
-        return Results.NotFound(new ErrorResponse("Geen speaker gevonden"));
-
     var tracks = EnumerateTracks().ToArray();
     if (tracks.Length == 0)
         return Results.BadRequest(new ErrorResponse("Geen muziek gevonden"));
+
+    if (!UseSonosPlayback())
+    {
+        await broadcast.StartAsync(tracks, shuffle, request.HttpContext.RequestAborted);
+        return Results.Ok(new PlayResponse("USB-audio/DAC", tracks.Length));
+    }
+
+    var target = await sonos.ResolveAsync(speaker);
+    if (target is null)
+        return Results.NotFound(new ErrorResponse("Geen speaker gevonden"));
 
     try
     {
@@ -451,11 +532,22 @@ app.MapPost("/api/play", async (SonosService sonos, HttpRequest request, string?
     }
 });
 
-app.MapPost("/api/pause", (SonosService sonos, string? speaker) => Command(sonos, speaker, s => sonos.PauseAsync(s)));
-app.MapPost("/api/stop", (SonosService sonos, string? speaker) => Command(sonos, speaker, s => sonos.StopAsync(s)));
-app.MapPost("/api/next", (SonosService sonos, string? speaker) => Command(sonos, speaker, s => sonos.NextAsync(s)));
-app.MapPost("/api/previous", (SonosService sonos, string? speaker) => Command(sonos, speaker, s => sonos.PreviousAsync(s)));
-app.MapPost("/api/volume", (SonosService sonos, int level, string? speaker) => Command(sonos, speaker, s => sonos.SetVolumeAsync(s, level)));
+app.MapPost("/api/pause", (SonosService sonos, IBroadcastPlaybackService broadcast, string? speaker) => PlaybackCommand(sonos, broadcast, speaker, s => sonos.PauseAsync(s), b => b.PauseAsync()));
+app.MapPost("/api/stop", (SonosService sonos, IBroadcastPlaybackService broadcast, string? speaker) => PlaybackCommand(sonos, broadcast, speaker, s => sonos.StopAsync(s), b => b.StopAsync()));
+app.MapPost("/api/next", (SonosService sonos, IBroadcastPlaybackService broadcast, string? speaker) => PlaybackCommand(sonos, broadcast, speaker, s => sonos.NextAsync(s), b => b.NextAsync()));
+app.MapPost("/api/previous", (SonosService sonos, IBroadcastPlaybackService broadcast, string? speaker) => PlaybackCommand(sonos, broadcast, speaker, s => sonos.PreviousAsync(s), b => b.PreviousAsync()));
+app.MapPost("/api/volume", (SonosService sonos, IBroadcastPlaybackService broadcast, int level, string? speaker) => PlaybackCommand(sonos, broadcast, speaker, s => sonos.SetVolumeAsync(s, level), b => { b.SetVolume(level); return Task.CompletedTask; }));
+
+async Task<IResult> PlaybackCommand(SonosService sonos, IBroadcastPlaybackService broadcast, string? speaker, Func<SonosSpeaker, Task> sonosAction, Func<IBroadcastPlaybackService, Task> broadcastAction)
+{
+    if (!UseSonosPlayback())
+    {
+        await broadcastAction(broadcast);
+        return Results.Ok(new SpeakerResponse("USB-audio/DAC"));
+    }
+
+    return await Command(sonos, speaker, sonosAction);
+}
 
 async Task<IResult> Command(SonosService sonos, string? speaker, Func<SonosSpeaker, Task> action)
 {

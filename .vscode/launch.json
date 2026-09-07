@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": ".NET Launch Streaming",
+      "type": "coreclr",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/Streaming/bin/Debug/net10.0/streaming.dll",
+      "cwd": "${workspaceFolder}/src/Streaming",
+      "preLaunchTask": "build",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "stopAtEntry": false
+    }
+  ]
+}

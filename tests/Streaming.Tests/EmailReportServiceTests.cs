@@ -2,7 +2,6 @@ using MailKit.Security;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using MimeKit;
-using Streaming;
 
 namespace Streaming.Tests;
 
@@ -124,7 +123,7 @@ public sealed class EmailReportServiceTests
         var attachment = message.Attachments.FirstOrDefault();
         Assert.NotNull(attachment);
         Assert.Equal("muziek-rapport.pdf", ((MimePart)attachment).FileName);
-        Assert.Equal("application/pdf", attachment.ContentType.MimeType);
+        Assert.Equal(PdfDocument.PdfContentType, attachment.ContentType.MimeType);
     }
 
     [Fact]

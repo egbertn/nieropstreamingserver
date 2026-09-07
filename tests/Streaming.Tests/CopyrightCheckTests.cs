@@ -1,5 +1,3 @@
-using Streaming;
-
 namespace Streaming.Tests;
 
 public sealed class CopyrightCheckTests

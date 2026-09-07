@@ -9,7 +9,7 @@ namespace Streaming;
 
 public sealed record SonosSpeaker(string Name, string IpAddress, string Uuid);
 
-public sealed record TrackPosition(string Title, TimeSpan Elapsed, TimeSpan Duration);
+public sealed record TrackPosition(string Title, TimeSpan Elapsed, TimeSpan Duration, string? Uri);
 
 public sealed class SonosException(string action, int errorCode, string description)
     : Exception($"{action}: {description}")
@@ -28,8 +28,7 @@ public sealed partial class SonosService(HttpClient http, IConfiguration configu
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(5);
 
     // Known addresses skip SSDP; useful when a firewall blocks the multicast replies.
-    private readonly string[] _knownAddresses = (configuration["Streaming:Sonos:Addresses"] ?? "")
-        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    private readonly string[] _knownAddresses = configuration.GetValue<string[]>("Streaming:Sonos:Addresses") ?? [];
     private readonly int _discoveryPort = configuration.GetValue("Streaming:Sonos:DiscoveryPort", 0);
 
     private readonly SemaphoreSlim _discoveryLock = new(1, 1);
@@ -166,7 +165,8 @@ public sealed partial class SonosService(HttpClient http, IConfiguration configu
         var metadata = WebUtility.HtmlDecode(TrackMetaData().Match(xml).Groups["meta"].Value);
         // The title is DIDL-Lite text and therefore escaped twice: first the metadata, then the title itself.
         var title = TrackTitle().Match(metadata) is { Success: true } m ? WebUtility.HtmlDecode(m.Groups["title"].Value) : "";
-        return new TrackPosition(title, elapsed ?? TimeSpan.Zero, duration.Value);
+        var uri = TrackUri().Match(xml).Groups["uri"].Value;
+        return new TrackPosition(title, elapsed ?? TimeSpan.Zero, duration.Value, string.IsNullOrWhiteSpace(uri) ? null : WebUtility.HtmlDecode(uri));
     }
 
     /// <summary>Sonos reports times as H:MM:SS; "NOT_IMPLEMENTED" means there is no active track.</summary>
@@ -342,6 +342,9 @@ public sealed partial class SonosService(HttpClient http, IConfiguration configu
 
     [GeneratedRegex("<RelTime>(?<time>[^<]*)</RelTime>")]
     private static partial Regex RelTime();
+
+    [GeneratedRegex("<TrackURI>(?<uri>[^<]*)</TrackURI>")]
+    private static partial Regex TrackUri();
 
     [GeneratedRegex("<TrackMetaData>(?<meta>.*?)</TrackMetaData>", RegexOptions.Singleline)]
     private static partial Regex TrackMetaData();

@@ -35,14 +35,15 @@ public sealed class DefaultSmtpClientWrapper : ISmtpClientWrapper
 public interface IEmailReportService
 {
     Task SendReportAsync(string recipientEmail, CancellationToken cancellationToken = default);
+    Task SendPlayAuditReportAsync(string recipientEmail, CancellationToken cancellationToken = default);
     MimeMessage CreateReportEmailMessage(string recipientEmail, MusicReportData data, byte[] pdfBytes);
 }
 
 public sealed class EmailReportService : IEmailReportService
 {
-    private const string PdfContentType = "application/pdf";
     private readonly IConfiguration _configuration;
     private readonly IMusicReportService _reportService;
+    private readonly IPlayAuditReportService? _playAuditReportService;
     private readonly ILogger<EmailReportService> _logger;
     private readonly Func<ISmtpClientWrapper> _smtpClientFactory;
 
@@ -50,10 +51,12 @@ public sealed class EmailReportService : IEmailReportService
         IConfiguration configuration,
         IMusicReportService reportService,
         ILogger<EmailReportService> logger,
-        Func<ISmtpClientWrapper>? smtpClientFactory = null)
+        Func<ISmtpClientWrapper>? smtpClientFactory = null,
+        IPlayAuditReportService? playAuditReportService = null)
     {
         _configuration = configuration;
         _reportService = reportService;
+        _playAuditReportService = playAuditReportService;
         _logger = logger;
         _smtpClientFactory = smtpClientFactory ?? (() => new DefaultSmtpClientWrapper());
     }
@@ -99,6 +102,41 @@ public sealed class EmailReportService : IEmailReportService
         await client.DisconnectAsync(true, cancellationToken);
 
         _logger.LogInformation("Muziekrapport succesvol verzonden naar {Recipient}", recipientEmail);
+    }
+
+    public async Task SendPlayAuditReportAsync(string recipientEmail, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(recipientEmail) || !IsValidEmail(recipientEmail))
+            throw new ArgumentException("Ongeldig e-mailadres opgegeven.", nameof(recipientEmail));
+        if (_playAuditReportService is null)
+            throw new InvalidOperationException("Speelauditrapportage is niet beschikbaar.");
+
+        var host = _configuration["Streaming:Smtp:Host"] ?? _configuration["Smtp:Host"];
+        if (string.IsNullOrWhiteSpace(host))
+            throw new InvalidOperationException("SMTP-server is niet geconfigureerd in appsettings.json (Streaming:Smtp:Host).");
+
+        var port = _configuration.GetValue("Streaming:Smtp:Port", _configuration.GetValue("Smtp:Port", 587));
+        var username = _configuration["Streaming:Smtp:Username"] ?? _configuration["Smtp:Username"];
+        var password = _configuration["Streaming:Smtp:Password"] ?? _configuration["Smtp:Password"];
+        var useSsl = _configuration.GetValue("Streaming:Smtp:UseSsl", _configuration.GetValue("Smtp:UseSsl", false));
+        var zipBytes = await _playAuditReportService.GenerateZipAsync(cancellationToken);
+        var fromAddress = _configuration["Streaming:Smtp:From"] ?? _configuration["Smtp:From"] ?? "music-report@local";
+        var fromName = _configuration["Streaming:Smtp:FromName"] ?? _configuration["Smtp:FromName"] ?? "Sonos Muziek Server";
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(fromName, fromAddress));
+        message.To.Add(MailboxAddress.Parse(recipientEmail));
+        message.Subject = $"Speel Audit - {DateTime.UtcNow.ToString("dd-MM-yyyy", CultureInfo.InvariantCulture)}";
+        var body = new BodyBuilder { TextBody = "In de bijlage staat het speel-auditrapport als een ZIP-bestand met JSON-gegevens." };
+        body.Attachments.Add("speel-audit.zip", zipBytes, new ContentType("application", "zip"));
+        message.Body = body.ToMessageBody();
+
+        using var client = _smtpClientFactory();
+        var secureOptions = useSsl ? (port == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls) : SecureSocketOptions.Auto;
+        await client.ConnectAsync(host, port, secureOptions, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(username))
+            await client.AuthenticateAsync(username, password ?? string.Empty, cancellationToken);
+        await client.SendAsync(message, cancellationToken);
+        await client.DisconnectAsync(true, cancellationToken);
     }
 
     public MimeMessage CreateReportEmailMessage(string recipientEmail, MusicReportData data, byte[] pdfBytes)

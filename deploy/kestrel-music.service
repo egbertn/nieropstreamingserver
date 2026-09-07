@@ -16,10 +16,14 @@ Environment=Smtp__Port=587
 Environment=Smtp__From=Music-report@local
 Environment=Smtp__FromName="Sonus Muziek Server"
 Environment=Smtp__UseSsl=true
+Environment=Smtp__Password=
+Environment=Smtp__Username=
+Environment=Streaming__Playback__UseSonos=true
 
 # Set Streaming__ApiToken through a systemd override or environment file.
 User=__USER__
 Group=__USER__
+SupplementaryGroups=audio
 Restart=always
 RestartSec=5
 KillSignal=SIGINT

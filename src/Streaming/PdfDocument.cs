@@ -17,6 +17,9 @@ public sealed class PdfDocument
     public const float MarginBottom = 45f;
     public const float ContentWidth = PageWidth - MarginLeft - MarginRight;
 
+    public const string PdfContentType = "application/pdf";
+
+
     public enum FontType
     {
         Helvetica = 1,
