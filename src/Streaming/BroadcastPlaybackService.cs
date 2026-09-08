@@ -17,7 +17,7 @@ public interface IBroadcastPlaybackService
 
 public sealed class BroadcastPlaybackService : IBroadcastPlaybackService
 {
-    private readonly object _sync = new();
+    private readonly Lock _sync = new();
     private readonly string _musicRoot;
     private readonly ILogger<BroadcastPlaybackService> _logger;
     private readonly string _playerPath;

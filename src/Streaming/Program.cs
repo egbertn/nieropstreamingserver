@@ -9,15 +9,15 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Report readiness to systemd (Type=notify) and log to journald.
 builder.Host.UseSystemd();
-
-builder.Services.AddHttpClient<SonosService>(c => c.Timeout = TimeSpan.FromSeconds(10));
-builder.Services.AddSingleton<IMusicReportService, MusicReportService>();
-builder.Services.AddSingleton<IAuditStorage, AuditStorage>();
-builder.Services.AddSingleton<IPlayAuditReportService, PlayAuditReportService>();
-builder.Services.AddSingleton<IEmailReportService, EmailReportService>();
-builder.Services.AddSingleton<IBroadcastPlaybackService, BroadcastPlaybackService>();
-builder.Services.AddHostedService<PlaybackAuditWorker>();
-builder.Services.ConfigureHttpJsonOptions(options =>
+var services = builder.Services;
+services.AddHttpClient<SonosService>(c => c.Timeout = TimeSpan.FromSeconds(10));
+services.AddSingleton<IMusicReportService, MusicReportService>();
+services.AddSingleton<IAuditStorage, AuditStorage>();
+services.AddSingleton<IPlayAuditReportService, PlayAuditReportService>();
+services.AddSingleton<IEmailReportService, EmailReportService>();
+services.AddSingleton<IBroadcastPlaybackService, BroadcastPlaybackService>();
+services.AddHostedService<PlaybackAuditWorker>();
+services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.TypeInfoResolverChain.Insert(0, StreamingJsonContext.Default));
 
 // Sonos only plays plain HTTP; listen on every interface so the speaker can reach us.
@@ -28,7 +28,7 @@ builder.WebHost.ConfigureKestrel((c, options) =>
     options.Limits.MaxRequestBodySize = 1024L * 1024 * 300;
 });
 
-builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
+services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
 {
     o.MultipartBodyLengthLimit = 1024L * 1024 * 300;
 });

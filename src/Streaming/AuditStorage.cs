@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
 namespace Streaming;
@@ -98,10 +97,11 @@ public sealed class AuditStorage : IAuditStorage
         await using var connection = await OpenAsync(cancellationToken);
         var command = connection.CreateCommand();
         command.CommandText = "INSERT INTO PurchaseEvidence (FileName, ContentType, Content, CreatedAtUtc) VALUES ($name, $type, $content, $created); SELECT last_insert_rowid();";
-        command.Parameters.AddWithValue("$name", Path.GetFileName(document.FileName));
-        command.Parameters.AddWithValue("$type", (object?)document.ContentType ?? DBNull.Value);
-        command.Parameters.AddWithValue("$content", document.Content);
-        command.Parameters.AddWithValue("$created", DateTime.UtcNow.ToString("O"));
+        var pars = command.Parameters;
+        pars.AddWithValue("$name", Path.GetFileName(document.FileName));
+        pars.AddWithValue("$type", (object?)document.ContentType ?? DBNull.Value);
+        pars.AddWithValue("$content", document.Content);
+        pars.AddWithValue("$created", DateTime.UtcNow.ToString("O"));
         return (long)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 
@@ -146,10 +146,11 @@ public sealed class AuditStorage : IAuditStorage
             var updateLicense = connection.CreateCommand();
             updateLicense.Transaction = transaction;
             updateLicense.CommandText = "UPDATE MusicFile SET LicenseFileName = $name, LicenseContentType = $type, LicenseContent = $content WHERE Id = $id";
-            updateLicense.Parameters.AddWithValue("$id", id);
-            updateLicense.Parameters.AddWithValue("$name", Path.GetFileName(license.FileName));
-            updateLicense.Parameters.AddWithValue("$type", (object?)license.ContentType ?? DBNull.Value);
-            updateLicense.Parameters.AddWithValue("$content", license.Content);
+            var pars = updateLicense.Parameters;
+            pars.AddWithValue("$id", id);
+            pars.AddWithValue("$name", Path.GetFileName(license.FileName));
+            pars.AddWithValue("$type", (object?)license.ContentType ?? DBNull.Value);
+            pars.AddWithValue("$content", license.Content);
             await updateLicense.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -200,10 +201,11 @@ public sealed class AuditStorage : IAuditStorage
                 SELECT 1 FROM PlayAudit WHERE MusicFileId = $trackId AND PlayedAtUtc >= $deduplicationStart
             );
             """;
-        command.Parameters.AddWithValue("$trackId", trackId);
-        command.Parameters.AddWithValue("$playedAt", playedAtUtc.ToString("O"));
-        command.Parameters.AddWithValue("$playbackMode", playbackMode);
-        command.Parameters.AddWithValue("$deduplicationStart", playedAtUtc.AddMinutes(-1).ToString("O"));
+        var pars = command.Parameters;
+        pars.AddWithValue("$trackId", trackId);
+        pars.AddWithValue("$playedAt", playedAtUtc.ToString("O"));
+        pars.AddWithValue("$playbackMode", playbackMode);
+        pars.AddWithValue("$deduplicationStart", playedAtUtc.AddMinutes(-1).ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -267,14 +269,15 @@ public sealed class AuditStorage : IAuditStorage
 
     private static void AddTrackParameters(SqliteCommand command, long? id, string relativePath, FileInfo fileInfo, (string Title, string MetadataJson) metadata, DateTime indexedAt)
     {
+        var pars = command.Parameters;
         if (id is long value)
-            command.Parameters.AddWithValue("$id", value);
-        command.Parameters.AddWithValue("$path", relativePath);
-        command.Parameters.AddWithValue("$name", fileInfo.Name);
-        command.Parameters.AddWithValue("$title", metadata.Title);
-        command.Parameters.AddWithValue("$metadata", metadata.MetadataJson);
-        command.Parameters.AddWithValue("$size", fileInfo.Length);
-        command.Parameters.AddWithValue("$indexed", indexedAt.ToString("O"));
+            pars.AddWithValue("$id", value);
+        pars.AddWithValue("$path", relativePath);
+        pars.AddWithValue("$name", fileInfo.Name);
+        pars.AddWithValue("$title", metadata.Title);
+        pars.AddWithValue("$metadata", metadata.MetadataJson);
+        pars.AddWithValue("$size", fileInfo.Length);
+        pars.AddWithValue("$indexed", indexedAt.ToString("O"));
     }
 
     private static (string Title, string MetadataJson) ReadMetadata(string fullPath)
