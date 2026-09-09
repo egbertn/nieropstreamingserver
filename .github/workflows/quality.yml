@@ -38,17 +38,26 @@ jobs:
           /d:sonar.token="$SONAR_TOKEN"
           /d:sonar.sourceEncoding="UTF-8"
           /d:sonar.exclusions="**/bin/**,**/obj/**,**/wwwroot/**"
-          /d:sonar.cs.opencover.reportsPaths="tests/**/TestResults/**/coverage.opencover.xml"
+          /d:sonar.cs.opencover.reportsPaths="tests/Streaming.Tests/TestResults/coverage.opencover.xml"
 
       - name: Build
-        run: dotnet build Streaming.slnx --no-restore --configuration Release
+        run: >-
+          dotnet build Streaming.slnx
+          --no-restore
+          --configuration Release
+          /p:DebugType=portable
+          /p:DebugSymbols=true
 
       - name: Test with coverage
         run: >-
           dotnet test tests/Streaming.Tests/Streaming.Tests.csproj
           --no-build
           --configuration Release
-          --collect:"XPlat Code Coverage;Format=opencover"
+          /p:DebugType=portable
+          /p:DebugSymbols=true
+          /p:CollectCoverage=true
+          /p:CoverletOutputFormat=opencover
+          /p:CoverletOutput=TestResults/coverage.opencover.xml
 
       - name: End SonarCloud analysis
         env:

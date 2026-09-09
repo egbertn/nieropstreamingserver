@@ -194,7 +194,7 @@ the ARM64 Raspberry Pi.
 Run the local checks with:
 
 ```bash
-dotnet test Streaming.slnx --collect:"XPlat Code Coverage;Format=opencover"
+dotnet test Streaming.slnx --configuration Release /p:DebugType=portable /p:DebugSymbols=true /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:CoverletOutput=TestResults/coverage.opencover.xml
 ```
 
 The GitHub Actions workflow runs the same tests and sends OpenCover coverage to SonarCloud.
