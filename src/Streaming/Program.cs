@@ -19,6 +19,7 @@ services.AddSingleton<IMusicReportService, MusicReportService>();
 services.AddSingleton<IAuditStorage, AuditStorage>();
 services.AddSingleton<IPlayAuditReportService, PlayAuditReportService>();
 services.AddSingleton<IEmailReportService, EmailReportService>();
+services.AddSingleton<IRandomSource, SharedRandomSource>();
 services.AddSingleton<IBroadcastPlaybackService, BroadcastPlaybackService>();
 services.AddHostedService<PlaybackAuditWorker>();
 services.ConfigureHttpJsonOptions(options =>

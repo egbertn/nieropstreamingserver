@@ -170,7 +170,7 @@ public sealed partial class SonosService(HttpClient http, StreamingOptions optio
     }
 
     /// <summary>Sonos reports times as H:MM:SS; "NOT_IMPLEMENTED" means there is no active track.</summary>
-    private static TimeSpan? ParseSonosTime(string value) =>
+    internal static TimeSpan? ParseSonosTime(string value) =>
         TimeSpan.TryParse(value, CultureInfo.InvariantCulture, out var span) ? span : null;
 
     private async Task<IReadOnlyList<Uri>> SearchAsync(CancellationToken ct)
@@ -303,7 +303,7 @@ public sealed partial class SonosService(HttpClient http, StreamingOptions optio
         return body;
     }
 
-    private static string Describe(int errorCode) => errorCode switch
+    internal static string Describe(int errorCode) => errorCode switch
     {
         701 => "De speaker kan nu niet van toestand wisselen (speelt er iets anders?)",
         711 => "Geen volgend of vorig nummer in de wachtrij",
@@ -313,7 +313,7 @@ public sealed partial class SonosService(HttpClient http, StreamingOptions optio
         _ => "Onbekende fout van de speaker"
     };
 
-    private static string BuildMetadata(string title) =>
+    internal static string BuildMetadata(string title) =>
         "<DIDL-Lite xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:upnp=\"urn:schemas-upnp-org:metadata-1-0/upnp/\" " +
         "xmlns=\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\">" +
         "<item id=\"-1\" parentID=\"-1\" restricted=\"true\">" +

@@ -6,6 +6,26 @@ namespace Streaming.Tests;
 
 public sealed class EmailReportServiceTests
 {
+    [Theory]
+    [InlineData("recipient@example.com", true)]
+    [InlineData("name+reports@example.co.uk", true)]
+    [InlineData("invalid-email-address", false)]
+    [InlineData("name@localhost", false)]
+    [InlineData("", false)]
+    public void IsValidEmail_ValidatesCompleteMailboxAddresses(string email, bool expected)
+    {
+        Assert.Equal(expected, EmailReportService.IsValidEmail(email));
+    }
+
+    [Fact]
+    public void ReportFormatting_FormatsDurationsAndSizesAtUnitBoundaries()
+    {
+        Assert.Equal("01m 02s", EmailReportService.FormatDuration(TimeSpan.FromMinutes(1) + TimeSpan.FromSeconds(2), 0));
+        Assert.Equal("2u 03m 04s", EmailReportService.FormatDuration(TimeSpan.FromHours(2) + TimeSpan.FromMinutes(3) + TimeSpan.FromSeconds(4), 2));
+        Assert.Matches("^999[.,]9 MB$", EmailReportService.FormatSize(999.94f));
+        Assert.Equal("1 GB", EmailReportService.FormatSize(1024f));
+    }
+
     private sealed class MockSmtpClientWrapper : ISmtpClientWrapper
     {
         public string? ConnectedHost { get; private set; }

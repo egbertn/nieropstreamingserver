@@ -265,7 +265,7 @@ public sealed class MusicReportService (StreamingOptions options): IMusicReportS
             copyrightTag, publisher, isrc, null);
     }
 
-    private static bool ContainsAny(string text, string[] markers, out string? matched)
+    internal static bool ContainsAny(string text, string[] markers, out string? matched)
     {
         foreach (var m in markers)
         {
@@ -279,7 +279,7 @@ public sealed class MusicReportService (StreamingOptions options): IMusicReportS
         return false;
     }
 
-    private static string? FirstTagValue(string[]? values, string? firstValue)
+    internal static string? FirstTagValue(string[]? values, string? firstValue)
     {
         if (values is { Length: > 0 })
             return string.Join(", ", values.Where(value => !string.IsNullOrWhiteSpace(value))).Trim();

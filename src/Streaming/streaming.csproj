@@ -36,6 +36,12 @@
     <TrimmerRootAssembly Include="TagLibSharp" />
   </ItemGroup>
 
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Streaming.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
   <!-- Without this the previous publish output ends up inside the next one. -->
   <ItemGroup>
     <Content Remove="out/**" />

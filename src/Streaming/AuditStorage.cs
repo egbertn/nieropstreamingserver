@@ -293,7 +293,7 @@ public sealed class AuditStorage : IAuditStorage
         }
     }
 
-    private static string EscapeJson(string? value) =>
+    internal static string EscapeJson(string? value) =>
         (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
 
     private static async Task<string> GetOrCreateChecksumAsync(string fullPath, CancellationToken cancellationToken)

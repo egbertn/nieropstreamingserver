@@ -15,7 +15,17 @@ public interface IBroadcastPlaybackService
     void SetVolume(int level);
 }
 
-public sealed class BroadcastPlaybackService(StreamingOptions options, ILogger<BroadcastPlaybackService> _logger) : IBroadcastPlaybackService
+public interface IRandomSource
+{
+    int Next(int maxValue);
+}
+
+internal sealed class SharedRandomSource : IRandomSource
+{
+    public int Next(int maxValue) => Random.Shared.Next(maxValue);
+}
+
+public sealed class BroadcastPlaybackService(StreamingOptions options, ILogger<BroadcastPlaybackService> _logger, IRandomSource random) : IBroadcastPlaybackService
 {
     private readonly Lock _sync = new();
     private readonly string _musicRoot = options.MusicRoot;
@@ -50,7 +60,7 @@ public sealed class BroadcastPlaybackService(StreamingOptions options, ILogger<B
         await StopAsync(cancellationToken);
         var queue = tracks.ToArray();
         if (shuffle)
-            Shuffle(queue);
+            Shuffle(queue, random);
 
         lock (_sync)
         {
@@ -255,10 +265,8 @@ public sealed class BroadcastPlaybackService(StreamingOptions options, ILogger<B
         }
     }
 
-    private static void Shuffle(string[] queue)
+    internal static void Shuffle(string[] queue, IRandomSource random)
     {
-
-        var random = Random.Shared;
         for (var index = queue.Length - 1; index > 0; index--)
         {
             var replacementIndex = random.Next(index + 1);

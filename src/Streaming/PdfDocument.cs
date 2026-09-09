@@ -359,7 +359,7 @@ public sealed class PdfDocument
         return _currentPage!.Stream;
     }
 
-    private static string EscapePdfString(string text)
+    internal static string EscapePdfString(string text)
     {
         var sb = new StringBuilder();
         foreach (var ch in text)

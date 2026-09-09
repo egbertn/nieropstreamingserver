@@ -214,7 +214,7 @@ public sealed class EmailReportService(
         return message;
     }
 
-    private static bool IsValidEmail(string email)
+    internal static bool IsValidEmail(string email)
     {
         if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
             return false;
@@ -226,12 +226,12 @@ public sealed class EmailReportService(
         return atIndex > 0 && atIndex < mailbox.Address.Length - 1 && mailbox.Address.IndexOf('.', atIndex) > atIndex;
     }
 
-    private static string FormatDuration(TimeSpan duration, int totalHours) =>
+    internal static string FormatDuration(TimeSpan duration, int totalHours) =>
         totalHours > 0
             ? $"{totalHours}u {duration.Minutes:D2}m {duration.Seconds:D2}s"
             : $"{duration.Minutes:D2}m {duration.Seconds:D2}s";
 
-    private static string FormatSize(float sizeMb) =>
+    internal static string FormatSize(float sizeMb) =>
         sizeMb >= 1000f
             ? $"{sizeMb / 1024f:0.##} GB"
             : $"{sizeMb:0.#} MB";
