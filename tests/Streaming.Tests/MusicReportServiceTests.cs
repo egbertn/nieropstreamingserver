@@ -28,10 +28,19 @@ public sealed class MusicReportServiceTests : IDisposable
         }
     }
 
+    private  StreamingOptions CreateStreamingOptions()
+    {
+        return new StreamingOptions
+        {
+            MusicRoot = _tempMusicDir,
+            DatabasePath = Path.Combine(_tempMusicDir, "database.db")
+        };
+    }
+
     [Fact]
     public void CollectReportData_EmptyDirectory_ReturnsZeroTracks()
     {
-        var service = new MusicReportService(_tempMusicDir);
+        var service = new MusicReportService(CreateStreamingOptions());
 
         var data = service.CollectReportData();
 
@@ -47,7 +56,7 @@ public sealed class MusicReportServiceTests : IDisposable
     public void CollectReportData_FileNameContainsCc0_ClassifiesTrackAsFree()
     {
         File.WriteAllBytes(Path.Combine(_tempMusicDir, "HoliznaCC0 - Doodles.mp3"), []);
-        var service = new MusicReportService(_tempMusicDir);
+        var service = new MusicReportService(CreateStreamingOptions());
 
         var data = service.CollectReportData();
 
@@ -60,7 +69,7 @@ public sealed class MusicReportServiceTests : IDisposable
     [Fact]
     public void GeneratePdfReport_EmptyDirectory_ReturnsValidPdf()
     {
-        var service = new MusicReportService(_tempMusicDir);
+        var service = new MusicReportService(CreateStreamingOptions());
 
         var pdfBytes = service.GeneratePdfReport();
 
@@ -75,7 +84,7 @@ public sealed class MusicReportServiceTests : IDisposable
     [Fact]
     public void GeneratePdfReport_WithExplicitData_IncludesTrackInfo()
     {
-        var service = new MusicReportService(_tempMusicDir);
+        var service = new MusicReportService(CreateStreamingOptions());
 
         var item = new TrackReportItem(
             "ambient/relax.mp3",

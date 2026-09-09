@@ -53,7 +53,7 @@ public interface IMusicReportService
     byte[] GeneratePdfReport(MusicReportData? data = null);
 }
 
-public sealed class MusicReportService : IMusicReportService
+public sealed class MusicReportService (StreamingOptions options): IMusicReportService
 {
     private static readonly string[] AudioExtensions = [".mp3", ".m4a", ".flac", ".wav", ".ogg"];
 
@@ -68,25 +68,13 @@ public sealed class MusicReportService : IMusicReportService
         "records", "recordings", "music group", "entertainment", "label", "publishing", "sony", "universal", "warner"
     ];
 
-    private readonly string _musicRoot;
-
-    public MusicReportService(StreamingOptions options)
-    {
-        _musicRoot = options.MusicRoot;
-    }
-
-    public MusicReportService(string musicRoot)
-    {
-        _musicRoot = musicRoot;
-    }
-
     public MusicReportData CollectReportData()
     {
         var tracks = new List<TrackReportItem>();
 
-        if (Directory.Exists(_musicRoot))
+        if (Directory.Exists(options.MusicRoot))
         {
-            var files = Directory.EnumerateFiles(_musicRoot, "*", SearchOption.AllDirectories)
+            var files = Directory.EnumerateFiles(options.MusicRoot, "*", SearchOption.AllDirectories)
                 .Where(f => AudioExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
                 .OrderBy(f => f, StringComparer.OrdinalIgnoreCase);
 
@@ -124,7 +112,7 @@ public sealed class MusicReportService : IMusicReportService
         try
         {
             var fileInfo = new FileInfo(fullPath);
-            var relativePath = Path.GetRelativePath(_musicRoot, fullPath).Replace(Path.DirectorySeparatorChar, '/');
+            var relativePath = Path.GetRelativePath(options.MusicRoot, fullPath).Replace(Path.DirectorySeparatorChar, '/');
             var fileName = Path.GetFileName(fullPath);
 
             string? title = null;

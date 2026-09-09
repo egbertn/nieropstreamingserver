@@ -40,7 +40,7 @@ public sealed class SonosServiceTests
 
     private sealed class RecordingHandler : HttpMessageHandler
     {
-        public string RequestBody { get; private set; } = string.Empty;
+        public string RequestBody { get; private set; } = null!;
         public string? RequestUri { get; private set; }
         public string? SoapAction { get; private set; }
 
