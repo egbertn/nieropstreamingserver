@@ -23,20 +23,12 @@ public sealed class AuditStorage : IAuditStorage
 {
     private readonly string _connectionString;
     private readonly string _musicRoot;
-    private readonly ILogger<AuditStorage> _logger;
 
-    public AuditStorage(IWebHostEnvironment environment, IConfiguration configuration, ILogger<AuditStorage> logger)
+    public AuditStorage(StreamingOptions options)
     {
-        var databasePath = configuration["Streaming:DatabasePath"];
-        if (string.IsNullOrWhiteSpace(databasePath))
-            databasePath = Path.Combine(environment.ContentRootPath, "data", "streaming.db");
-        else if (!Path.IsPathRooted(databasePath))
-            databasePath = Path.Combine(environment.ContentRootPath, databasePath);
-
-        Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
-        _connectionString = new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true }.ToString();
-        _musicRoot = Path.Combine(environment.ContentRootPath, "wwwroot", "music");
-        _logger = logger;
+        Directory.CreateDirectory(Path.GetDirectoryName(options.DatabasePath)!);
+        _connectionString = new SqliteConnectionStringBuilder { DataSource = options.DatabasePath, ForeignKeys = true }.ToString();
+        _musicRoot = options.MusicRoot;
     }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)

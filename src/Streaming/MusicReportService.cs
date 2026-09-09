@@ -70,9 +70,9 @@ public sealed class MusicReportService : IMusicReportService
 
     private readonly string _musicRoot;
 
-    public MusicReportService(IWebHostEnvironment environment)
+    public MusicReportService(StreamingOptions options)
     {
-        _musicRoot = Path.Combine(environment.ContentRootPath, "wwwroot", "music");
+        _musicRoot = options.MusicRoot;
     }
 
     public MusicReportService(string musicRoot)

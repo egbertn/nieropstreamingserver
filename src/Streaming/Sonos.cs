@@ -17,7 +17,7 @@ public sealed class SonosException(string action, int errorCode, string descript
     public int ErrorCode { get; } = errorCode;
 }
 
-public sealed partial class SonosService(HttpClient http, IConfiguration configuration, ILogger<SonosService> logger)
+public sealed partial class SonosService(HttpClient http, StreamingOptions options, ILogger<SonosService> logger)
 {
     private const string AvTransport = "urn:schemas-upnp-org:service:AVTransport:1";
     private const string RenderingControl = "urn:schemas-upnp-org:service:RenderingControl:1";
@@ -28,8 +28,8 @@ public sealed partial class SonosService(HttpClient http, IConfiguration configu
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(5);
 
     // Known addresses skip SSDP; useful when a firewall blocks the multicast replies.
-    private readonly string[] _knownAddresses = configuration.GetValue<string[]>("Streaming:Sonos:Addresses") ?? [];
-    private readonly int _discoveryPort = configuration.GetValue("Streaming:Sonos:DiscoveryPort", 0);
+    private readonly string[] _knownAddresses = options.SonosAddresses;
+    private readonly int _discoveryPort = options.SonosDiscoveryPort;
 
     private readonly SemaphoreSlim _discoveryLock = new(1, 1);
     private IReadOnlyList<SonosSpeaker> _cached = [];

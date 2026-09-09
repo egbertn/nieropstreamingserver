@@ -1,5 +1,4 @@
 using MailKit.Security;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using MimeKit;
 
@@ -96,17 +95,17 @@ public sealed class EmailReportServiceTests
     [Fact]
     public void CreateReportEmailMessage_BuildsValidMimeMessageWithPdfAttachment()
     {
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Streaming:Smtp:Host"] = "smtp.example.com",
-                ["Streaming:Smtp:From"] = "sender@example.com",
-                ["Streaming:Smtp:FromName"] = "Muziek Server"
-            })
-            .Build();
+        var options = new StreamingOptions
+        {
+            MusicRoot = string.Empty,
+            DatabasePath = string.Empty,
+            SmtpHost = "smtp.example.com",
+            SmtpFrom = "sender@example.com",
+            SmtpFromName = "Muziek Server"
+        };
 
         var reportService = new DummyMusicReportService();
-        var emailService = new EmailReportService(config, reportService, NullLogger<EmailReportService>.Instance);
+        var emailService = new EmailReportService(options, reportService, NullLogger<EmailReportService>.Instance);
 
         var data = reportService.CollectReportData();
         var pdfBytes = reportService.GeneratePdfReport(data);
@@ -129,21 +128,21 @@ public sealed class EmailReportServiceTests
     [Fact]
     public async Task SendReportAsync_ValidInput_ConnectsAndSendsViaSmtp()
     {
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Streaming:Smtp:Host"] = "mail.myhost.com",
-                ["Streaming:Smtp:Port"] = "587",
-                ["Streaming:Smtp:Username"] = "smtpuser",
-                ["Streaming:Smtp:Password"] = "smtppass",
-                ["Streaming:Smtp:From"] = "music@myhost.com"
-            })
-            .Build();
+        var options = new StreamingOptions
+        {
+            MusicRoot = string.Empty,
+            DatabasePath = string.Empty,
+            SmtpHost = "mail.myhost.com",
+            SmtpPort = 587,
+            SmtpUsername = "smtpuser",
+            SmtpPassword = "smtppass",
+            SmtpFrom = "music@myhost.com"
+        };
 
         var mockWrapper = new MockSmtpClientWrapper();
         var reportService = new DummyMusicReportService();
         var emailService = new EmailReportService(
-            config,
+            options,
             reportService,
             NullLogger<EmailReportService>.Instance,
             () => mockWrapper);
@@ -162,14 +161,14 @@ public sealed class EmailReportServiceTests
     [Fact]
     public async Task SendReportAsync_InvalidEmail_ThrowsArgumentException()
     {
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Streaming:Smtp:Host"] = "mail.test.com"
-            })
-            .Build();
+        var options = new StreamingOptions
+        {
+            MusicRoot = string.Empty,
+            DatabasePath = string.Empty,
+            SmtpHost = "mail.test.com"
+        };
 
-        var emailService = new EmailReportService(config, new DummyMusicReportService(), NullLogger<EmailReportService>.Instance);
+        var emailService = new EmailReportService(options, new DummyMusicReportService(), NullLogger<EmailReportService>.Instance);
 
         await Assert.ThrowsAsync<ArgumentException>(() => emailService.SendReportAsync("invalid-email-address"));
     }
@@ -177,8 +176,8 @@ public sealed class EmailReportServiceTests
     [Fact]
     public async Task SendReportAsync_MissingHostConfig_ThrowsInvalidOperationException()
     {
-        var config = new ConfigurationBuilder().Build();
-        var emailService = new EmailReportService(config, new DummyMusicReportService(), NullLogger<EmailReportService>.Instance);
+        var options = new StreamingOptions { MusicRoot = string.Empty, DatabasePath = string.Empty };
+        var emailService = new EmailReportService(options, new DummyMusicReportService(), NullLogger<EmailReportService>.Instance);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => emailService.SendReportAsync("user@example.com"));
     }

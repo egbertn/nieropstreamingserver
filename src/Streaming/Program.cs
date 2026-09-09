@@ -7,9 +7,13 @@ using Streaming;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Computed once at startup so services don't each recompute paths from IConfiguration/IWebHostEnvironment.
+var streamingOptions = StreamingOptions.FromConfiguration(builder.Configuration, builder.Environment);
+
 // Report readiness to systemd (Type=notify) and log to journald.
 builder.Host.UseSystemd();
 var services = builder.Services;
+services.AddSingleton(streamingOptions);
 services.AddHttpClient<SonosService>(c => c.Timeout = TimeSpan.FromSeconds(10));
 services.AddSingleton<IMusicReportService, MusicReportService>();
 services.AddSingleton<IAuditStorage, AuditStorage>();
@@ -23,8 +27,7 @@ services.ConfigureHttpJsonOptions(options =>
 // Sonos only plays plain HTTP; listen on every interface so the speaker can reach us.
 builder.WebHost.ConfigureKestrel((c, options) =>
 {
-    var port = c.Configuration.GetValue("Streaming:Port", 8080);
-    options.ListenAnyIP(port);
+    options.ListenAnyIP(streamingOptions.Port);
     options.Limits.MaxRequestBodySize = 1024L * 1024 * 300;
 });
 
@@ -35,7 +38,7 @@ services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
 
 var app = builder.Build();
 
-var musicRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "music");
+var musicRoot = streamingOptions.MusicRoot;
 Directory.CreateDirectory(musicRoot);
 
 var contentTypes = new FileExtensionContentTypeProvider(new Dictionary<string, string>
@@ -64,7 +67,7 @@ app.UseStaticFiles(new StaticFileOptions
 
 // The speaker cannot send headers, so only /api is guarded; /music stays open for playback.
 // The custom header also forces a CORS preflight, which blocks requests from other sites.
-var apiToken = app.Configuration["Streaming:ApiToken"];
+var apiToken = streamingOptions.ApiToken;
 if (string.IsNullOrWhiteSpace(apiToken))
     app.Logger.LogWarning("Streaming:ApiToken is not set; anyone on the network can upload and delete files.");
 
@@ -99,7 +102,7 @@ IEnumerable<string> EnumerateTracks() =>
 string UrlFor(HttpRequest request, string relativePath)
 {
     var encoded = string.Join('/', relativePath.Split('/').Select(Uri.EscapeDataString));
-    var publicBaseUrl = app.Configuration["Streaming:PublicBaseUrl"]?.TrimEnd('/');
+    var publicBaseUrl = streamingOptions.PublicBaseUrl;
     var baseUrl = Uri.TryCreate(publicBaseUrl, UriKind.Absolute, out _) ? publicBaseUrl : $"{request.Scheme}://{request.Host}";
     return $"{baseUrl}/music/{encoded}";
 }

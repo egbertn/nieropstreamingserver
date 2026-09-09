@@ -1,24 +1,14 @@
 namespace Streaming;
 
-public sealed class PlaybackAuditWorker : BackgroundService
+public sealed class PlaybackAuditWorker(IServiceProvider _services, StreamingOptions _options, ILogger<PlaybackAuditWorker> _logger) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan MinimumPlayDuration = TimeSpan.FromSeconds(30);
 
-    private readonly IServiceProvider _services;
-    private readonly IConfiguration _configuration;
-    private readonly ILogger<PlaybackAuditWorker> _logger;
     private string? _candidateUri;
     private DateTime _candidateStartedUtc;
     private string? _recordedUri;
     private DateOnly? _lastSummaryDate;
-
-    public PlaybackAuditWorker(IServiceProvider services, IConfiguration configuration, ILogger<PlaybackAuditWorker> logger)
-    {
-        _services = services;
-        _configuration = configuration;
-        _logger = logger;
-    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -26,7 +16,7 @@ public sealed class PlaybackAuditWorker : BackgroundService
         {
             try
             {
-                if (_configuration.GetValue("Streaming:Playback:UseSonos", true))
+                if (_options.UseSonos)
                     await PollSonosAsync(stoppingToken);
                 else
                     await PollBroadcastAsync(stoppingToken);

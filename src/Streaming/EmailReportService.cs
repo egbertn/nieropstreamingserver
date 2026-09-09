@@ -39,27 +39,15 @@ public interface IEmailReportService
     MimeMessage CreateReportEmailMessage(string recipientEmail, MusicReportData data, byte[] pdfBytes);
 }
 
-public sealed class EmailReportService : IEmailReportService
+public sealed class EmailReportService(
+    StreamingOptions _options,
+    IMusicReportService _reportService,
+    ILogger<EmailReportService> _logger,
+    Func<ISmtpClientWrapper>? smtpClientFactory = null,
+    IPlayAuditReportService? _playAuditReportService = null) : IEmailReportService
 {
-    private readonly IConfiguration _configuration;
-    private readonly IMusicReportService _reportService;
-    private readonly IPlayAuditReportService? _playAuditReportService;
-    private readonly ILogger<EmailReportService> _logger;
-    private readonly Func<ISmtpClientWrapper> _smtpClientFactory;
 
-    public EmailReportService(
-        IConfiguration configuration,
-        IMusicReportService reportService,
-        ILogger<EmailReportService> logger,
-        Func<ISmtpClientWrapper>? smtpClientFactory = null,
-        IPlayAuditReportService? playAuditReportService = null)
-    {
-        _configuration = configuration;
-        _reportService = reportService;
-        _playAuditReportService = playAuditReportService;
-        _logger = logger;
-        _smtpClientFactory = smtpClientFactory ?? (() => new DefaultSmtpClientWrapper());
-    }
+    private readonly Func<ISmtpClientWrapper> _smtpClientFactory = smtpClientFactory ?? (() => new DefaultSmtpClientWrapper());
 
     public async Task SendReportAsync(string recipientEmail, CancellationToken cancellationToken = default)
     {
@@ -68,16 +56,16 @@ public sealed class EmailReportService : IEmailReportService
             throw new ArgumentException("Ongeldig e-mailadres opgegeven.", nameof(recipientEmail));
         }
 
-        var host = _configuration["Streaming:Smtp:Host"] ?? _configuration["Smtp:Host"];
+        var host = _options.SmtpHost;
         if (string.IsNullOrWhiteSpace(host))
         {
             throw new InvalidOperationException("SMTP-server is niet geconfigureerd in appsettings.json (Streaming:Smtp:Host).");
         }
 
-        var port = _configuration.GetValue("Streaming:Smtp:Port", _configuration.GetValue("Smtp:Port", 587));
-        var username = _configuration["Streaming:Smtp:Username"] ?? _configuration["Smtp:Username"];
-        var password = _configuration["Streaming:Smtp:Password"] ?? _configuration["Smtp:Password"];
-        var useSsl = _configuration.GetValue("Streaming:Smtp:UseSsl", _configuration.GetValue("Smtp:UseSsl", false));
+        var port = _options.SmtpPort;
+        var username = _options.SmtpUsername;
+        var password = _options.SmtpPassword;
+        var useSsl = _options.SmtpUseSsl;
 
         var data = _reportService.CollectReportData();
         var pdfBytes = _reportService.GeneratePdfReport(data);
@@ -111,17 +99,17 @@ public sealed class EmailReportService : IEmailReportService
         if (_playAuditReportService is null)
             throw new InvalidOperationException("Speelauditrapportage is niet beschikbaar.");
 
-        var host = _configuration["Streaming:Smtp:Host"] ?? _configuration["Smtp:Host"];
+        var host = _options.SmtpHost;
         if (string.IsNullOrWhiteSpace(host))
             throw new InvalidOperationException("SMTP-server is niet geconfigureerd in appsettings.json (Streaming:Smtp:Host).");
 
-        var port = _configuration.GetValue("Streaming:Smtp:Port", _configuration.GetValue("Smtp:Port", 587));
-        var username = _configuration["Streaming:Smtp:Username"] ?? _configuration["Smtp:Username"];
-        var password = _configuration["Streaming:Smtp:Password"] ?? _configuration["Smtp:Password"];
-        var useSsl = _configuration.GetValue("Streaming:Smtp:UseSsl", _configuration.GetValue("Smtp:UseSsl", false));
+        var port = _options.SmtpPort;
+        var username = _options.SmtpUsername;
+        var password = _options.SmtpPassword;
+        var useSsl = _options.SmtpUseSsl;
         var zipBytes = await _playAuditReportService.GenerateZipAsync(cancellationToken);
-        var fromAddress = _configuration["Streaming:Smtp:From"] ?? _configuration["Smtp:From"] ?? "music-report@local";
-        var fromName = _configuration["Streaming:Smtp:FromName"] ?? _configuration["Smtp:FromName"] ?? "Sonos Muziek Server";
+        var fromAddress = _options.SmtpFrom;
+        var fromName = _options.SmtpFromName;
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(fromName, fromAddress));
         message.To.Add(MailboxAddress.Parse(recipientEmail));
@@ -141,8 +129,8 @@ public sealed class EmailReportService : IEmailReportService
 
     public MimeMessage CreateReportEmailMessage(string recipientEmail, MusicReportData data, byte[] pdfBytes)
     {
-        var fromAddress = _configuration["Streaming:Smtp:From"] ?? _configuration["Smtp:From"] ?? "music-report@local";
-        var fromName = _configuration["Streaming:Smtp:FromName"] ?? _configuration["Smtp:FromName"] ?? "Sonos Muziek Server";
+        var fromAddress = _options.SmtpFrom;
+        var fromName = _options.SmtpFromName;
 
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(fromName, fromAddress));

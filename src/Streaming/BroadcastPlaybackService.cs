@@ -15,12 +15,11 @@ public interface IBroadcastPlaybackService
     void SetVolume(int level);
 }
 
-public sealed class BroadcastPlaybackService : IBroadcastPlaybackService
+public sealed class BroadcastPlaybackService(StreamingOptions options, ILogger<BroadcastPlaybackService> _logger) : IBroadcastPlaybackService
 {
     private readonly Lock _sync = new();
-    private readonly string _musicRoot;
-    private readonly ILogger<BroadcastPlaybackService> _logger;
-    private readonly string _playerPath;
+    private readonly string _musicRoot = options.MusicRoot;
+    private readonly string _playerPath = options.FfplayPath;
     private string[] _queue = [];
     private int _currentIndex;
     private int _volume = 25;
@@ -32,13 +31,6 @@ public sealed class BroadcastPlaybackService : IBroadcastPlaybackService
     private Process? _player;
     private int? _requestedIndex;
     private TaskCompletionSource<bool>? _resumeSignal;
-
-    public BroadcastPlaybackService(IWebHostEnvironment environment, IConfiguration configuration, ILogger<BroadcastPlaybackService> logger)
-    {
-        _musicRoot = Path.Combine(environment.ContentRootPath, "wwwroot", "music");
-        _logger = logger;
-        _playerPath = configuration["Streaming:Playback:FfplayPath"] ?? "ffplay";
-    }
 
     public BroadcastPlaybackState GetState()
     {

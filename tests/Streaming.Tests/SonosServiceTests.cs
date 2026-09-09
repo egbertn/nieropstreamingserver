@@ -1,5 +1,4 @@
 using System.Net;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Streaming.Tests;
@@ -35,8 +34,8 @@ public sealed class SonosServiceTests
 
     private static SonosService CreateService(RecordingHandler handler)
     {
-        var configuration = new ConfigurationBuilder().Build();
-        return new SonosService(new HttpClient(handler), configuration, NullLogger<SonosService>.Instance);
+        var options = new StreamingOptions { MusicRoot = string.Empty, DatabasePath = string.Empty };
+        return new SonosService(new HttpClient(handler), options, NullLogger<SonosService>.Instance);
     }
 
     private sealed class RecordingHandler : HttpMessageHandler
