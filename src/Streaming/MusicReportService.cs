@@ -113,7 +113,7 @@ public sealed class MusicReportService (StreamingOptions options): IMusicReportS
         {
             var fileInfo = new FileInfo(fullPath);
             var relativePath = Path.GetRelativePath(options.MusicRoot, fullPath).Replace(Path.DirectorySeparatorChar, '/');
-            var fileName = Path.GetFileName(fullPath);
+            var fileName = fileInfo.Name;
 
             string? title = null;
             string? artist = null;

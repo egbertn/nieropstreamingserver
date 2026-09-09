@@ -140,7 +140,7 @@ app.MapPost("/api/tracks", async (HttpRequest request, bool force = false) =>
 
     foreach (var file in form.Files.Where(candidate => candidate.Name == "files"))
     {
-        var name = Path.GetFileName(file.FileName);
+        var name = file.FileName;
         var extension = Path.GetExtension(name);
         var isAudio = file.ContentType?.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) == true;
 
