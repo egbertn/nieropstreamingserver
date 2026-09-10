@@ -19,18 +19,8 @@ public interface IAuditStorage
     Task<IReadOnlyList<PlayAuditReportItem>> GetPlayAuditReportAsync(CancellationToken cancellationToken = default);
 }
 
-public sealed class AuditStorage : IAuditStorage
+public sealed class AuditStorage (StreamingOptions options): IAuditStorage
 {
-    private readonly string _connectionString;
-    private readonly string _musicRoot;
-
-    public AuditStorage(StreamingOptions options)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(options.DatabasePath)!);
-        _connectionString = new SqliteConnectionStringBuilder { DataSource = options.DatabasePath, ForeignKeys = true }.ToString();
-        _musicRoot = options.MusicRoot;
-    }
-
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
@@ -101,7 +91,7 @@ public sealed class AuditStorage : IAuditStorage
     {
         var checksum = await GetOrCreateChecksumAsync(fullPath, cancellationToken);
         var fileInfo = new FileInfo(fullPath);
-        var relativePath = Path.GetRelativePath(_musicRoot, fullPath).Replace(Path.DirectorySeparatorChar, '/');
+        var relativePath = Path.GetRelativePath(options.MusicRoot, fullPath).Replace(Path.DirectorySeparatorChar, '/');
         var metadata = ReadMetadata(fullPath);
         var now = DateTime.UtcNow;
 
@@ -254,6 +244,8 @@ public sealed class AuditStorage : IAuditStorage
 
     private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)
     {
+        Directory.CreateDirectory(Path.GetDirectoryName(options.DatabasePath)!);
+        string _connectionString=new SqliteConnectionStringBuilder { DataSource = options.DatabasePath, ForeignKeys = true }.ToString();
         var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         return connection;

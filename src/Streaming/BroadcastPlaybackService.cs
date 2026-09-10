@@ -28,8 +28,7 @@ internal sealed class SharedRandomSource : IRandomSource
 public sealed class BroadcastPlaybackService(StreamingOptions options, ILogger<BroadcastPlaybackService> _logger, IRandomSource random) : IBroadcastPlaybackService
 {
     private readonly Lock _sync = new();
-    private readonly string _musicRoot = options.MusicRoot;
-    private readonly string _playerPath = options.FfplayPath;
+
     private string[] _queue = [];
     private int _currentIndex;
     private int _volume = 25;
@@ -177,8 +176,8 @@ public sealed class BroadcastPlaybackService(StreamingOptions options, ILogger<B
                 _state = "PLAYING";
             }
 
-            var fullPath = Path.GetFullPath(Path.Combine(_musicRoot, relativePath));
-            if (!fullPath.StartsWith(Path.GetFullPath(_musicRoot) + Path.DirectorySeparatorChar, StringComparison.Ordinal) || !File.Exists(fullPath))
+            var fullPath = Path.GetFullPath(Path.Combine(options.MusicRoot, relativePath));
+            if (!fullPath.StartsWith(options.MusicRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal) || !File.Exists(fullPath))
             {
                 _logger.LogWarning("Broadcasttrack bestaat niet: {Track}", relativePath);
             }
@@ -186,12 +185,12 @@ public sealed class BroadcastPlaybackService(StreamingOptions options, ILogger<B
             {
                 using var player = Process.Start(new ProcessStartInfo
                 {
-                    FileName = _playerPath,
+                    FileName = options.FfplayPath,
                     Arguments = $"-nodisp -nostats -hide_banner -autoexit -loglevel error -volume {volume} -ss {startOffset.TotalSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)} \"{fullPath.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"",
                     RedirectStandardInput = true,
                     RedirectStandardError = true,
 
-                }) ?? throw new InvalidOperationException($"Lokale audiospeler '{_playerPath}' kon niet worden gestart.");
+                }) ?? throw new InvalidOperationException($"Lokale audiospeler '{options.FfplayPath}' kon niet worden gestart.");
 
                 lock (_sync)
                     _player = player;
