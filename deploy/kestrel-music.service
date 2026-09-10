@@ -10,7 +10,6 @@ WorkingDirectory=__DIR__
 ExecStart=__DIR__/streaming
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=DOTNET_PrintTelemetryMessage=false
-Environment=Streaming__Port=8080
 Environment=Smtp__Host=localhost
 Environment=Smtp__Port=587
 Environment=Smtp__From=Music-report@local
@@ -19,6 +18,8 @@ Environment=Smtp__UseSsl=true
 Environment=Smtp__Password=
 Environment=Smtp__Username=
 Environment=Streaming__Playback__UseSonos=true
+Environment=Streaming__Port=8080
+Environment=Streaming__ApiToken=3012
 
 # Set Streaming__ApiToken through a systemd override or environment file.
 User=__USER__

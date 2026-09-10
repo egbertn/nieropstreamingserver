@@ -61,7 +61,7 @@ no sound passes through the till PC.
 | `GET /report` | choose either the collection report or the playback audit |
 | `GET /report/music` | collection report page with PDF preview, download and email options |
 | `GET /report/pdf` | PDF report containing all tracks, durations, metadata tags and copyright status |
-| `POST /api/report/email` | send the generated PDF report via email (configured via `Streaming:Smtp`) |
+| `POST /api/report/email` | send the generated PDF report via email (configured via `Smtp`) |
 | `GET /report/audit/download` | ZIP download containing `speel-audit.json` |
 | `POST /report/audit/email` | send the ZIP playback audit report by email |
 | `GET /health` | status and number of tracks found |
@@ -212,11 +212,18 @@ journalctl -u kestrel-music -f
 | `Streaming:Port` | 8080 | listening port, bound on all interfaces |
 | `Streaming:PublicBaseUrl` | `http://raspberrypi.local:8080` | LAN URL that Sonos uses to fetch queued audio; must never be `localhost` |
 | `Streaming:ApiToken` | empty | shared secret for `/api`; empty disables the check |
-| `Streaming:DatabasePath` | `data/streaming.db` | SQLite catalogue and audit database, relative to the application directory when not absolute |
+| `ConnectionStrings:sqlite` | `data/streaming.db` | SQLite catalogue and audit database; relative paths are resolved against the application directory |
 | `Streaming:Playback:UseSonos` | `true` | `true` controls Sonos; `false` plays locally via `ffplay` to the default USB-DAC/ALSA output and audits as `Broadcast` |
 | `Streaming:Playback:FfplayPath` | `ffplay` | command or absolute path for the local broadcast audio player |
 | `Streaming:Sonos:Addresses` | empty | comma-separated speaker IPs; skips SSDP |
-| `Streaming:Sonos:DiscoveryPort` | 1901 | fixed UDP source port for SSDP, so you can open it in the firewall |
+| `Streaming:Sonos:DiscoveryPort` | 0 | fixed UDP source port for SSDP; set it when you need to open a specific firewall port |
+| `Smtp:Host` | empty | SMTP server used for emailing reports; email endpoints fail when it is not configured |
+| `Smtp:Port` | 587 | SMTP server port |
+| `Smtp:Username` | empty | optional SMTP username |
+| `Smtp:Password` | empty | optional SMTP password |
+| `Smtp:UseSsl` | `false` | use TLS; port 465 uses implicit TLS, other ports use STARTTLS |
+| `Smtp:From` | `music-report@local` | sender email address for reports |
+| `Smtp:FromName` | `Sonos Muziek Server` | sender display name for reports |
 
 Override these through systemd using double underscores:
 
@@ -226,6 +233,10 @@ sudo systemctl edit kestrel-music
 ```ini
 [Service]
 Environment=Streaming__Sonos__Addresses=192.168.1.211
+Environment=ConnectionStrings__sqlite=data/streaming.db
+Environment=Smtp__Host=smtp.example.com
+Environment=Smtp__Username=reports@example.com
+Environment=Smtp__Password=<password>
 ```
 
 ## Firewall

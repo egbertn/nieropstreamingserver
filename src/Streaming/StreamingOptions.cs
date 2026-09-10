@@ -25,7 +25,7 @@ public sealed class StreamingOptions
 
     public static StreamingOptions FromConfiguration(IConfiguration configuration, IWebHostEnvironment environment)
     {
-        var databasePath = configuration["Streaming:DatabasePath"];
+        var databasePath = configuration.GetConnectionString("sqlite");
         if (string.IsNullOrWhiteSpace(databasePath))
             databasePath = Path.Combine(environment.ContentRootPath, "data", "streaming.db");
         else if (!Path.IsPathRooted(databasePath))
@@ -42,13 +42,13 @@ public sealed class StreamingOptions
             UseSonos = configuration.GetValue("Streaming:Playback:UseSonos", true),
             SonosAddresses = configuration.GetValue<string[]>("Streaming:Sonos:Addresses") ?? [],
             SonosDiscoveryPort = configuration.GetValue("Streaming:Sonos:DiscoveryPort", 0),
-            SmtpHost = configuration["Streaming:Smtp:Host"] ?? configuration["Smtp:Host"],
-            SmtpPort = configuration.GetValue("Streaming:Smtp:Port", configuration.GetValue("Smtp:Port", 587)),
-            SmtpUsername = configuration["Streaming:Smtp:Username"] ?? configuration["Smtp:Username"],
-            SmtpPassword = configuration["Streaming:Smtp:Password"] ?? configuration["Smtp:Password"],
-            SmtpUseSsl = configuration.GetValue("Streaming:Smtp:UseSsl", configuration.GetValue("Smtp:UseSsl", false)),
-            SmtpFrom = configuration["Streaming:Smtp:From"] ?? configuration["Smtp:From"] ?? "music-report@local",
-            SmtpFromName = configuration["Streaming:Smtp:FromName"] ?? configuration["Smtp:FromName"] ?? "Sonos Muziek Server",
+            SmtpHost = configuration["Smtp:Host"],
+            SmtpPort = configuration.GetValue("Smtp:Port", 587),
+            SmtpUsername = configuration["Smtp:Username"],
+            SmtpPassword = configuration["Smtp:Password"],
+            SmtpUseSsl = configuration.GetValue("Smtp:UseSsl", false),
+            SmtpFrom =  configuration["Smtp:From"] ?? "music-report@local",
+            SmtpFromName = configuration["Smtp:FromName"] ?? "Sonos Muziek Server",
         };
     }
 }
