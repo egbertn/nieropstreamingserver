@@ -151,8 +151,8 @@ app.MapPost("/api/tracks", async (HttpRequest request, bool force = false) =>
         }
 
         var destination = Path.Combine(musicRoot, name);
-        // Only write straight into the music folder; paths from the client are untrusted.
-        if (Path.GetDirectoryName(Path.GetFullPath(destination)).CompareTo(Path.GetFullPath(musicRoot), StringComparison.InvariantCultureIgnoreCase) != 0)
+        // make sure filename does not contain any directory components.
+        if (!Path.GetFileName(name).Equals(name, StringComparison.Ordinal))
         {
             skipped.Add(file.FileName);
             continue;
@@ -182,14 +182,14 @@ app.MapPost("/api/tracks", async (HttpRequest request, bool force = false) =>
         UploadedDocument? license = null;
         if (licenseFile is not null)
         {
-            await using var licenseStream = new MemoryStream();
+            using var licenseStream = new MemoryStream();
             await licenseFile.CopyToAsync(licenseStream);
             license = new UploadedDocument(licenseFile.FileName, licenseFile.ContentType, licenseStream.ToArray());
         }
 
         await auditStorage.IndexTrackAsync(destination, purchaseEvidenceId, license, request.HttpContext.RequestAborted);
 
-        saved.Add(Path.GetFileName(destination));
+        saved.Add(name);
     }
 
     return Results.Ok(new UploadResponse(saved, skipped, flagged));
