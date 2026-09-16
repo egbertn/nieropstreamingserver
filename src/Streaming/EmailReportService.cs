@@ -62,28 +62,23 @@ public sealed class EmailReportService(
             throw new InvalidOperationException("SMTP-server is niet geconfigureerd in appsettings.json (Streaming:Smtp:Host).");
         }
 
-        var port = _options.SmtpPort;
-        var username = _options.SmtpUsername;
-        var password = _options.SmtpPassword;
-        var useSsl = _options.SmtpUseSsl;
-
         var data = _reportService.CollectReportData();
         var pdfBytes = _reportService.GeneratePdfReport(data);
 
         var message = CreateReportEmailMessage(recipientEmail, data, pdfBytes);
 
-        _logger.LogInformation("Versturen van muziekrapport PDF naar {Recipient} via {Host}:{Port}", recipientEmail, host, port);
+        _logger.LogInformation("Versturen van muziekrapport PDF naar {Recipient} via {Host}:{Port}", recipientEmail, host, _options.SmtpPort);
 
         using var client = _smtpClientFactory();
-        var secureOptions = useSsl
-            ? (port == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls)
+        var secureOptions = _options.SmtpUseSsl
+            ? (_options.SmtpPort == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls)
             : SecureSocketOptions.Auto;
 
-        await client.ConnectAsync(host, port, secureOptions, cancellationToken);
+        await client.ConnectAsync(host, _options.SmtpPort, secureOptions, cancellationToken);
 
-        if (!string.IsNullOrWhiteSpace(username))
+        if (!string.IsNullOrWhiteSpace(_options.SmtpUsername))
         {
-            await client.AuthenticateAsync(username, password ?? string.Empty, cancellationToken);
+            await client.AuthenticateAsync(_options.SmtpUsername, _options.SmtpPassword ?? string.Empty, cancellationToken);
         }
 
         await client.SendAsync(message, cancellationToken);
