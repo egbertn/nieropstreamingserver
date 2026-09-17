@@ -7,7 +7,9 @@ public sealed record ErrorResponse(string Error);
 
 public sealed record SonosErrorResponse(string Error, int Code);
 
-public sealed record TrackResponse(string Path, string Title, string Url);
+public sealed record TrackResponse(string Path, string Title, string Url, string Genre);
+
+public sealed record GenreUpdateRequest(string Path, string? Genre);
 
 public sealed record UploadResponse(IReadOnlyList<string> Saved, IReadOnlyList<string> Skipped, IReadOnlyList<string> Flagged);
 
@@ -42,6 +44,7 @@ public sealed record EmailReportResponse(bool Success, string Message);
 [JsonSerializable(typeof(SpeakerResponse))]
 [JsonSerializable(typeof(EmailReportRequest))]
 [JsonSerializable(typeof(EmailReportResponse))]
+[JsonSerializable(typeof(GenreUpdateRequest))]
 [JsonSerializable(typeof(SonosSpeaker[]))]
 [JsonSerializable(typeof(IReadOnlyList<SonosSpeaker>))]
 public partial class StreamingJsonContext : JsonSerializerContext;

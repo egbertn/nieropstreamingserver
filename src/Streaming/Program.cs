@@ -113,11 +113,26 @@ await auditStorage.InitializeAsync();
 foreach (var track in EnumerateTracks())
     await auditStorage.IndexTrackAsync(Path.Combine(musicRoot, track), null, null);
 
-app.MapGet("/api/tracks", (HttpRequest request) =>
-    EnumerateTracks().Select(t => new TrackResponse(
+app.MapGet("/api/tracks", async (HttpRequest request) =>
+{
+    var genres = await auditStorage.GetEffectiveGenresAsync(request.HttpContext.RequestAborted);
+    return EnumerateTracks().Select(t => new TrackResponse(
         t,
         Path.GetFileNameWithoutExtension(t),
-        UrlFor(request, t))).ToArray());
+        UrlFor(request, t),
+        genres.GetValueOrDefault(t, "onbekend"))).ToArray();
+});
+
+app.MapPost("/api/tracks/genre", async (GenreUpdateRequest request) =>
+{
+    var trackId = await auditStorage.FindTrackIdByRelativePathAsync(request.Path);
+    if (trackId is null)
+        return Results.NotFound(new ErrorResponse("Track niet gevonden"));
+
+    var genre = string.IsNullOrWhiteSpace(request.Genre) ? null : request.Genre.Trim();
+    await auditStorage.SetGenreOverrideAsync(trackId.Value, genre);
+    return Results.Ok();
+});
 
 app.MapPost("/api/tracks", async (HttpRequest request, bool force = false) =>
 {
@@ -128,6 +143,7 @@ app.MapPost("/api/tracks", async (HttpRequest request, bool force = false) =>
     List<string> saved = [];
     List<string> skipped = [];
     List<string> flagged = [];
+    var genre = form.TryGetValue("genre", out var genreValue) && !string.IsNullOrWhiteSpace(genreValue) ? genreValue.ToString().Trim() : null;
     var invoiceFile = form.Files.FirstOrDefault(candidate => candidate.Name == "invoice");
     long? purchaseEvidenceId = null;
     if (invoiceFile is { Length: > 0 })
@@ -187,7 +203,9 @@ app.MapPost("/api/tracks", async (HttpRequest request, bool force = false) =>
             license = new UploadedDocument(licenseFile.FileName, licenseFile.ContentType, licenseStream.ToArray());
         }
 
-        await auditStorage.IndexTrackAsync(destination, purchaseEvidenceId, license, request.HttpContext.RequestAborted);
+        var trackId = await auditStorage.IndexTrackAsync(destination, purchaseEvidenceId, license, request.HttpContext.RequestAborted);
+        if (genre is not null)
+            await auditStorage.SetGenreOverrideAsync(trackId, genre, request.HttpContext.RequestAborted);
 
         saved.Add(name);
     }

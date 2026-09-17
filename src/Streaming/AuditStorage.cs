@@ -17,6 +17,8 @@ public interface IAuditStorage
     Task RecordPlayAsync(long trackId, DateTime playedAtUtc, string playbackMode, CancellationToken cancellationToken = default);
     Task RebuildMonthlySummaryAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PlayAuditReportItem>> GetPlayAuditReportAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyDictionary<string, string>> GetEffectiveGenresAsync(CancellationToken cancellationToken = default);
+    Task SetGenreOverrideAsync(long trackId, string? genre, CancellationToken cancellationToken = default);
 }
 
 public sealed class AuditStorage (StreamingOptions options): IAuditStorage
@@ -39,7 +41,9 @@ public sealed class AuditStorage (StreamingOptions options): IAuditStorage
                 IndexedAtUtc TEXT NOT NULL,
                 LicenseFileName TEXT NULL,
                 LicenseContentType TEXT NULL,
-                LicenseContent BLOB NULL
+                LicenseContent BLOB NULL,
+                Genre TEXT NULL,
+                GenreOverride TEXT NULL
             );
             CREATE TABLE IF NOT EXISTS PurchaseEvidence (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,6 +73,28 @@ public sealed class AuditStorage (StreamingOptions options): IAuditStorage
             );
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
+
+        // CREATE TABLE IF NOT EXISTS does not add columns to a database that already existed before they were introduced.
+        await EnsureColumnAsync(connection, "MusicFile", "Genre", "TEXT NULL", cancellationToken);
+        await EnsureColumnAsync(connection, "MusicFile", "GenreOverride", "TEXT NULL", cancellationToken);
+    }
+
+    private static async Task EnsureColumnAsync(SqliteConnection connection, string table, string column, string definition, CancellationToken cancellationToken)
+    {
+        var check = connection.CreateCommand();
+        check.CommandText = $"PRAGMA table_info({table})";
+        await using (var reader = await check.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+        }
+
+        var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {definition}";
+        await alter.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<long?> StorePurchaseEvidenceAsync(UploadedDocument document, CancellationToken cancellationToken = default)
@@ -108,7 +134,7 @@ public sealed class AuditStorage (StreamingOptions options): IAuditStorage
             id = value;
             var update = connection.CreateCommand();
             update.Transaction = transaction;
-            update.CommandText = "UPDATE MusicFile SET RelativePath = $path, FileName = $name, Title = $title, MetadataJson = $metadata, FileSizeBytes = $size, IndexedAtUtc = $indexed WHERE Id = $id";
+            update.CommandText = "UPDATE MusicFile SET RelativePath = $path, FileName = $name, Title = $title, MetadataJson = $metadata, FileSizeBytes = $size, IndexedAtUtc = $indexed, Genre = $genre WHERE Id = $id";
             AddTrackParameters(update, id, relativePath, fileInfo, metadata, now);
             await update.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -116,7 +142,7 @@ public sealed class AuditStorage (StreamingOptions options): IAuditStorage
         {
             var insert = connection.CreateCommand();
             insert.Transaction = transaction;
-            insert.CommandText = "INSERT INTO MusicFile (Checksum, ChecksumAlgorithm, RelativePath, FileName, Title, MetadataJson, FileSizeBytes, CreatedAtUtc, IndexedAtUtc) VALUES ($checksum, 'SHA-256', $path, $name, $title, $metadata, $size, $created, $indexed); SELECT last_insert_rowid();";
+            insert.CommandText = "INSERT INTO MusicFile (Checksum, ChecksumAlgorithm, RelativePath, FileName, Title, MetadataJson, FileSizeBytes, CreatedAtUtc, IndexedAtUtc, Genre) VALUES ($checksum, 'SHA-256', $path, $name, $title, $metadata, $size, $created, $indexed, $genre); SELECT last_insert_rowid();";
             insert.Parameters.AddWithValue("$checksum", checksum);
             AddTrackParameters(insert, null, relativePath, fileInfo, metadata, now);
             insert.Parameters.AddWithValue("$created", fileInfo.CreationTimeUtc.ToString("O"));
@@ -170,6 +196,33 @@ public sealed class AuditStorage (StreamingOptions options): IAuditStorage
         command.CommandText = "SELECT Id FROM MusicFile WHERE RelativePath = $path";
         command.Parameters.AddWithValue("$path", relativePath);
         return await command.ExecuteScalarAsync(cancellationToken) is long id ? id : null;
+    }
+
+    public async Task<IReadOnlyDictionary<string, string>> GetEffectiveGenresAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT RelativePath, Genre, GenreOverride FROM MusicFile";
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var relativePath = reader.GetString(0);
+            var genre = reader.IsDBNull(1) ? null : reader.GetString(1);
+            var genreOverride = reader.IsDBNull(2) ? null : reader.GetString(2);
+            result[relativePath] = genreOverride ?? genre ?? "onbekend";
+        }
+        return result;
+    }
+
+    public async Task SetGenreOverrideAsync(long trackId, string? genre, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        var command = connection.CreateCommand();
+        command.CommandText = "UPDATE MusicFile SET GenreOverride = $genre WHERE Id = $id";
+        command.Parameters.AddWithValue("$genre", (object?)genre ?? DBNull.Value);
+        command.Parameters.AddWithValue("$id", trackId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task RecordPlayAsync(long trackId, DateTime playedAtUtc, string playbackMode, CancellationToken cancellationToken = default)
@@ -251,7 +304,7 @@ public sealed class AuditStorage (StreamingOptions options): IAuditStorage
         return connection;
     }
 
-    private static void AddTrackParameters(SqliteCommand command, long? id, string relativePath, FileInfo fileInfo, (string Title, string MetadataJson) metadata, DateTime indexedAt)
+    private static void AddTrackParameters(SqliteCommand command, long? id, string relativePath, FileInfo fileInfo, (string Title, string MetadataJson, string? Genre) metadata, DateTime indexedAt)
     {
         var pars = command.Parameters;
         if (id is long value)
@@ -262,9 +315,10 @@ public sealed class AuditStorage (StreamingOptions options): IAuditStorage
         pars.AddWithValue("$metadata", metadata.MetadataJson);
         pars.AddWithValue("$size", fileInfo.Length);
         pars.AddWithValue("$indexed", indexedAt.ToString("O"));
+        pars.AddWithValue("$genre", (object?)metadata.Genre ?? DBNull.Value);
     }
 
-    private static (string Title, string MetadataJson) ReadMetadata(string fullPath)
+    private static (string Title, string MetadataJson, string? Genre) ReadMetadata(string fullPath)
     {
         try
         {
@@ -272,16 +326,17 @@ public sealed class AuditStorage (StreamingOptions options): IAuditStorage
             var title = string.IsNullOrWhiteSpace(file.Tag.Title) ? Path.GetFileNameWithoutExtension(fullPath) : file.Tag.Title.Trim();
             var performers = EscapeJson(string.Join(", ", file.Tag.Performers));
             var album = EscapeJson(file.Tag.Album);
+            var genre = MusicReportService.FirstTagValue(file.Tag.Genres, file.Tag.FirstGenre);
             var genres = EscapeJson(string.Join(", ", file.Tag.Genres));
             var copyright = EscapeJson(file.Tag.Copyright);
             var publisher = EscapeJson(file.Tag.Publisher);
             var isrc = EscapeJson(file.Tag.ISRC);
             var metadata = $"{{\"performers\":\"{performers}\",\"album\":\"{album}\",\"year\":{file.Tag.Year},\"genres\":\"{genres}\",\"copyright\":\"{copyright}\",\"publisher\":\"{publisher}\",\"isrc\":\"{isrc}\"}}";
-            return (title, metadata);
+            return (title, metadata, genre);
         }
         catch (Exception)
         {
-            return (Path.GetFileNameWithoutExtension(fullPath), "{}");
+            return (Path.GetFileNameWithoutExtension(fullPath), "{}", null);
         }
     }
 

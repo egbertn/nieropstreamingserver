@@ -18,9 +18,17 @@
   li { padding: .35rem 0; border-bottom: 1px solid #8883; display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
   li button { font-size: .9rem; padding: .35rem .75rem; }
   li .title { overflow-wrap: anywhere; }
+  li .title { flex: 1; }
+  li button.genre { font-size: .8rem; padding: .25rem .6rem; opacity: .75; border-radius: 1rem; }
   li button.delete { line-height: 0; }
   dialog { border: 1px solid #8888; border-radius: .75rem; padding: 1.5rem; }
   dialog .row { margin-bottom: 0; }
+  .genre-picker { position: relative; }
+  .genre-picker summary { cursor: pointer; font-size: 1rem; padding: .4rem; border: 1px solid #8888; border-radius: .35rem; }
+  .genre-options { display: grid; grid-template-columns: repeat(2, minmax(8rem, 1fr)); gap: .4rem 1rem; margin: .75rem 0; }
+  .genre-options label { white-space: nowrap; }
+  .genre-picker .genre-options { position: absolute; z-index: 1; padding: .75rem; border: 1px solid #8888; background: Canvas; box-shadow: 0 .25rem .75rem #0003; }
+  #genreDialog { min-width: min(28rem, calc(100vw - 4rem)); }
 </style>
 </head>
 <body>
@@ -51,12 +59,32 @@
       <label>Aankoopbewijs (optioneel) <input type="file" id="invoiceFile" accept="application/pdf,image/*"></label>
     </div>
     <div class="row">
+      <label>Genres (optioneel, gelden voor alle geselecteerde bestanden)
+        <details class="genre-picker">
+          <summary id="uploadGenreSummary">Geen genre gekozen</summary>
+          <div class="genre-options" id="uploadGenreOptions"></div>
+        </details>
+      </label>
+    </div>
+    <div class="row">
       <input type="file" id="uploadFiles" accept="audio/*" multiple>
     </div>
     <div id="licenseFiles"></div>
     <div class="row">
       <button value="cancel">Annuleren</button>
       <button value="upload" id="btnDoUpload">Uploaden</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="genreDialog">
+  <form method="dialog">
+    <h2>Genres aanpassen</h2>
+    <p id="genreTrackTitle"></p>
+    <div class="genre-options" id="editGenreOptions"></div>
+    <div class="row">
+      <button value="cancel">Annuleren</button>
+      <button value="save">Opslaan</button>
     </div>
   </form>
 </dialog>
@@ -79,6 +107,32 @@
 const $ = id => document.getElementById(id);
 const say = text => $('status').textContent = text;
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const genres = ['Blues', 'Relax' ,'Country', 'Dance', 'Elektronisch', 'Folk', 'Funk', 'Hip-hop', 'Jazz', 'Klassiek', 'Latin', 'Metal', 'Pop', 'Reggae', 'Rock', 'Soul', 'Wereldmuziek'];
+
+function genreValues(value) {
+  return value && value !== 'onbekend' ? value.split(',').map(item => item.trim()).filter(Boolean) : [];
+}
+
+function renderGenreOptions(container, selected = []) {
+  const values = [...genres, ...selected.filter(value => !genres.includes(value))];
+  container.replaceChildren(...values.map(value => {
+    const label = document.createElement('label');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.value = value;
+    checkbox.checked = selected.includes(value);
+    label.append(checkbox, ' ' + value);
+    return label;
+  }));
+}
+
+function selectedGenres(container) {
+  return [...container.querySelectorAll('input:checked')].map(input => input.value).join(', ');
+}
+
+function updateUploadGenreSummary() {
+  $('uploadGenreSummary').textContent = selectedGenres($('uploadGenreOptions')) || 'Geen genre gekozen';
+}
 
 // The token is kept in localStorage; on a 401 we ask once and retry.
 async function api(path, options = {}) {
@@ -173,15 +227,45 @@ async function loadTracks() {
     const title = document.createElement('span');
     title.className = 'title';
     title.textContent = track.title;
+    const genre = document.createElement('button');
+    genre.className = 'genre';
+    genre.title = 'Genre aanpassen';
+    genre.textContent = track.genre;
+    genre.onclick = () => editGenre(track);
     const del = document.createElement('button');
     del.className = 'delete';
     del.title = 'Verwijderen';
     del.setAttribute('aria-label', 'Verwijder ' + track.title);
     del.innerHTML = crossIcon;
     del.onclick = () => removeTrack(track);
-    li.append(title, del);
+    li.append(title, genre, del);
     list.append(li);
   }
+}
+
+async function editGenre(track) {
+  $('genreTrackTitle').textContent = track.title;
+  renderGenreOptions($('editGenreOptions'), genreValues(track.genre));
+  $('genreDialog').dataset.trackPath = track.path;
+  $('genreDialog').showModal();
+}
+
+async function saveGenre(path) {
+  const value = selectedGenres($('editGenreOptions'));
+  say('Bezig...');
+  try {
+    const res = await api('/api/tracks/genre', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, genre: value })
+    });
+    if (!res.ok) { say((await res.json()).error); return; }
+    say('Genre aangepast');
+  } catch (err) {
+    say('Fout: ' + err.message);
+    return;
+  }
+  await loadTracks();
 }
 
 // Reload after upload/delete; if the removed track was playing, start the first available file.
@@ -221,12 +305,16 @@ async function uploadFiles() {
   for (const file of files) body.append('files', file);
   const invoice = $('invoiceFile').files[0];
   if (invoice) body.append('invoice', invoice);
+  const genre = selectedGenres($('uploadGenreOptions'));
+  if (genre) body.append('genre', genre);
   for (const file of files) {
     const license = document.querySelector(`[data-license-for="${CSS.escape(file.name)}"]`)?.files[0];
     if (license) body.append('license:' + file.name, license);
   }
   input.value = '';
   $('invoiceFile').value = '';
+  renderGenreOptions($('uploadGenreOptions'));
+  updateUploadGenreSummary();
   $('licenseFiles').replaceChildren();
 
   say('Uploaden...');
@@ -246,6 +334,8 @@ async function uploadFiles() {
   await refreshAfterChange(false);
 }
 
+renderGenreOptions($('uploadGenreOptions'));
+$('uploadGenreOptions').onchange = updateUploadGenreSummary;
 $('btnUpload').onclick = () => $('uploadDialog').showModal();
 $('uploadFiles').onchange = e => {
   const licenses = $('licenseFiles');
@@ -264,7 +354,16 @@ $('uploadFiles').onchange = e => {
 };
 $('uploadDialog').addEventListener('close', e => {
   if (e.target.returnValue === 'upload') uploadFiles();
-  else { $('uploadFiles').value = ''; $('invoiceFile').value = ''; $('licenseFiles').replaceChildren(); }
+  else {
+    $('uploadFiles').value = '';
+    $('invoiceFile').value = '';
+    renderGenreOptions($('uploadGenreOptions'));
+    updateUploadGenreSummary();
+    $('licenseFiles').replaceChildren();
+  }
+});
+$('genreDialog').addEventListener('close', e => {
+  if (e.target.returnValue === 'save') saveGenre(e.target.dataset.trackPath);
 });
 $('volume').onchange = e => post('/api/volume', 'level=' + e.target.value);
 $('speaker').onchange = refreshState;
