@@ -197,7 +197,10 @@ Run the local checks with:
 dotnet test Streaming.slnx --configuration Release /p:DebugType=portable /p:DebugSymbols=true /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:CoverletOutput=TestResults/coverage.opencover.xml
 ```
 
-The GitHub Actions workflow runs the same tests and sends OpenCover coverage to SonarCloud.
+The quality workflow runs on pushes to `main` using the self-hosted ARM64
+`streaming-build` runner and its existing .NET SDK in `~/.dotnet`; it does not run
+on pull requests. SonarScanner is installed in the runner's temporary directory
+for each job. The workflow runs the same tests and sends OpenCover coverage to SonarCloud.
 Configure the repository variables `SONAR_ORGANIZATION` and `SONAR_PROJECT_KEY`, plus the
 `SONAR_TOKEN` secret, before enabling the quality gate.
 
