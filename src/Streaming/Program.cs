@@ -21,6 +21,7 @@ services.AddSingleton<IPlayAuditReportService, PlayAuditReportService>();
 services.AddSingleton<IEmailReportService, EmailReportService>();
 services.AddSingleton<IRandomSource, SharedRandomSource>();
 services.AddSingleton<IBroadcastPlaybackService, BroadcastPlaybackService>();
+services.AddSingleton<IGenreScheduleService, GenreScheduleService>();
 services.AddHostedService<PlaybackAuditWorker>();
 services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.TypeInfoResolverChain.Insert(0, StreamingJsonContext.Default));
@@ -116,11 +117,13 @@ foreach (var track in EnumerateTracks())
 app.MapGet("/api/tracks", async (HttpRequest request) =>
 {
     var genres = await auditStorage.GetEffectiveGenresAsync(request.HttpContext.RequestAborted);
+    var metadata = await auditStorage.GetTrackMetadataAsync(request.HttpContext.RequestAborted);
     return EnumerateTracks().Select(t => new TrackResponse(
         t,
         Path.GetFileNameWithoutExtension(t),
         UrlFor(request, t),
-        genres.GetValueOrDefault(t, "onbekend"))).ToArray();
+        genres.GetValueOrDefault(t, "onbekend"),
+        metadata.GetValueOrDefault(t, new TrackMetadata("", "", 0, "", "", "", "", null, null, null, null)))).ToArray();
 });
 
 app.MapPost("/api/tracks/genre", async (GenreUpdateRequest request) =>
@@ -146,9 +149,9 @@ app.MapPost("/api/tracks", async (HttpRequest request, bool force = false) =>
     var genre = form.TryGetValue("genre", out var genreValue) && !string.IsNullOrWhiteSpace(genreValue) ? genreValue.ToString().Trim() : null;
     var invoiceFile = form.Files.FirstOrDefault(candidate => candidate.Name == "invoice");
     long? purchaseEvidenceId = null;
-    if (invoiceFile is { Length: > 0 })
+    if (invoiceFile?.Length > 0)
     {
-        await using var invoiceStream = new MemoryStream();
+        using MemoryStream invoiceStream = new ();
         await invoiceFile.CopyToAsync(invoiceStream);
         purchaseEvidenceId = await auditStorage.StorePurchaseEvidenceAsync(
             new UploadedDocument(invoiceFile.FileName, invoiceFile.ContentType, invoiceStream.ToArray()));
@@ -262,6 +265,17 @@ app.MapGet("/report", () => Results.Content("""
     <title>Rapporten</title><style>body{font-family:system-ui,sans-serif;margin:2rem;max-width:42rem}a{display:inline-block;margin:.5rem .5rem .5rem 0;padding:.7rem 1rem;border:1px solid #2d7d46;border-radius:.4rem;color:#2d7d46;text-decoration:none;font-weight:600}a:hover{background:#eaf5ed}</style>
     <p><a href="/">Terug naar muziekbediening</a></p><h1>Rapporten</h1><a href="/report/music">Muziekcollectie</a><a href="/report/audit">Speel Audit</a>
     """, "text/html", Encoding.UTF8));
+
+app.MapGet("/schedule", () => Results.File(Path.Combine(app.Environment.WebRootPath, "schedule.html"), "text/html"));
+
+app.MapGet("/api/schedule", async (IGenreScheduleService schedule, CancellationToken ct) =>
+    Results.Ok(await schedule.LoadAsync(ct)));
+
+app.MapPut("/api/schedule", async (ScheduleSaveRequest request, IGenreScheduleService schedule, CancellationToken ct) =>
+{
+    await schedule.SaveAsync(request, ct);
+    return Results.Ok(await schedule.LoadAsync(ct));
+});
 
 app.MapGet("/report/music", (HttpRequest request, IMusicReportService reportService) =>
 {
@@ -421,8 +435,8 @@ app.MapGet("/report/download", (IMusicReportService reportService) =>
 
 app.MapGet("/report/audit/download", async (IPlayAuditReportService reportService, CancellationToken ct) =>
 {
-    var zip = await reportService.GenerateZipAsync(ct);
-    return Results.File(zip, "application/zip", "speel-audit.zip");
+    var zipStream = await reportService.GenerateZipAsync(ct);
+    return Results.Stream(zipStream, "application/zip", "speel-audit.zip");
 });
 
 app.MapPost("/report/audit/email", async (EmailReportRequest request, IEmailReportService emailService, CancellationToken ct) =>
@@ -519,9 +533,10 @@ app.MapGet("/api/state", async (SonosService sonos, IBroadcastPlaybackService br
 
 app.MapPost("/api/play", async (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker, bool shuffle = false) =>
 {
-    var tracks = EnumerateTracks().ToArray();
+    var schedule = request.HttpContext.RequestServices.GetRequiredService<IGenreScheduleService>();
+    var (tracks, filteredBySchedule) = await EnumeratePlayableTracksAsync(schedule, request.HttpContext.RequestAborted);
     if (tracks.Length == 0)
-        return Results.BadRequest(new ErrorResponse("Geen muziek gevonden"));
+        return Results.BadRequest(new ErrorResponse(filteredBySchedule ? "Geen muziek gevonden voor huidig schema" : "Geen muziek gevonden"));
 
     if (!UseSonosPlayback())
     {
@@ -553,6 +568,17 @@ app.MapPost("/api/play", async (SonosService sonos, IBroadcastPlaybackService br
             statusCode: StatusCodes.Status409Conflict);
     }
 });
+
+async Task<(string[] Tracks, bool FilteredBySchedule)> EnumeratePlayableTracksAsync(IGenreScheduleService schedule, CancellationToken cancellationToken)
+{
+    var tracks = EnumerateTracks().ToArray();
+    var activeGenres = await schedule.GetActiveGenresAsync(DateTimeOffset.Now, cancellationToken);
+    if (activeGenres is null)
+        return (tracks, false);
+
+    var effectiveGenres = await auditStorage.GetEffectiveGenresAsync(cancellationToken);
+    return (tracks.Where(t => GenreScheduleService.TrackMatchesGenres(effectiveGenres.GetValueOrDefault(t, "onbekend"), activeGenres)).ToArray(), true);
+}
 
 app.MapPost("/api/pause", (SonosService sonos, IBroadcastPlaybackService broadcast, string? speaker) => PlaybackCommand(sonos, broadcast, speaker, s => sonos.PauseAsync(s), b => b.PauseAsync()));
 app.MapPost("/api/stop", (SonosService sonos, IBroadcastPlaybackService broadcast, string? speaker) => PlaybackCommand(sonos, broadcast, speaker, s => sonos.StopAsync(s), b => b.StopAsync()));

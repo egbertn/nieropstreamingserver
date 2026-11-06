@@ -111,18 +111,21 @@ public sealed class EmailReportServiceTests
             return "%PDF-1.4 mock pdf data %%EOF"u8.ToArray();
         }
     }
+    private static StreamingOptions CreateDummyStreamingOptions(bool noHost = false) =>new ()
+        {
+            MusicRoot = string.Empty,
+            DatabasePath = string.Empty,
+            SmtpHost = noHost ? null : "smtp.example.com",
+            SmtpFrom = "sender@example.com",
+            SmtpFromName = "Muziek Server",
+            SmtpUsername = "smtpuser",
+            SmtpPassword = "smtppass"
+        };
 
     [Fact]
     public void CreateReportEmailMessage_BuildsValidMimeMessageWithPdfAttachment()
     {
-        var options = new StreamingOptions
-        {
-            MusicRoot = string.Empty,
-            DatabasePath = string.Empty,
-            SmtpHost = "smtp.example.com",
-            SmtpFrom = "sender@example.com",
-            SmtpFromName = "Muziek Server"
-        };
+        var options = CreateDummyStreamingOptions();
 
         var reportService = new DummyMusicReportService();
         var emailService = new EmailReportService(options, reportService, NullLogger<EmailReportService>.Instance);
@@ -148,16 +151,7 @@ public sealed class EmailReportServiceTests
     [Fact]
     public async Task SendReportAsync_ValidInput_ConnectsAndSendsViaSmtp()
     {
-        var options = new StreamingOptions
-        {
-            MusicRoot = string.Empty,
-            DatabasePath = string.Empty,
-            SmtpHost = "mail.myhost.com",
-            SmtpPort = 587,
-            SmtpUsername = "smtpuser",
-            SmtpPassword = "smtppass",
-            SmtpFrom = "music@myhost.com"
-        };
+        var options = CreateDummyStreamingOptions();
 
         var mockWrapper = new MockSmtpClientWrapper();
         var reportService = new DummyMusicReportService();
@@ -169,7 +163,7 @@ public sealed class EmailReportServiceTests
 
         await emailService.SendReportAsync("target@receiver.com");
 
-        Assert.Equal("mail.myhost.com", mockWrapper.ConnectedHost);
+        Assert.Equal("smtp.example.com", mockWrapper.ConnectedHost);
         Assert.Equal(587, mockWrapper.ConnectedPort);
         Assert.Equal("smtpuser", mockWrapper.AuthenticatedUsername);
         Assert.Equal("smtppass", mockWrapper.AuthenticatedPassword);
@@ -181,12 +175,7 @@ public sealed class EmailReportServiceTests
     [Fact]
     public async Task SendReportAsync_InvalidEmail_ThrowsArgumentException()
     {
-        var options = new StreamingOptions
-        {
-            MusicRoot = string.Empty,
-            DatabasePath = string.Empty,
-            SmtpHost = "mail.test.com"
-        };
+        var options = CreateDummyStreamingOptions();
 
         var emailService = new EmailReportService(options, new DummyMusicReportService(), NullLogger<EmailReportService>.Instance);
 
@@ -196,7 +185,8 @@ public sealed class EmailReportServiceTests
     [Fact]
     public async Task SendReportAsync_MissingHostConfig_ThrowsInvalidOperationException()
     {
-        var options = new StreamingOptions { MusicRoot = string.Empty, DatabasePath = string.Empty };
+        var options = CreateDummyStreamingOptions(noHost: true);
+
         var emailService = new EmailReportService(options, new DummyMusicReportService(), NullLogger<EmailReportService>.Instance);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => emailService.SendReportAsync("user@example.com"));

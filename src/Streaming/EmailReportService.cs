@@ -98,11 +98,7 @@ public sealed class EmailReportService(
         if (string.IsNullOrWhiteSpace(host))
             throw new InvalidOperationException("SMTP-server is niet geconfigureerd in appsettings.json (Streaming:Smtp:Host).");
 
-        var port = _options.SmtpPort;
-        var username = _options.SmtpUsername;
-        var password = _options.SmtpPassword;
-        var useSsl = _options.SmtpUseSsl;
-        var zipBytes = await _playAuditReportService.GenerateZipAsync(cancellationToken);
+        await using var stream = await _playAuditReportService.GenerateZipAsync(cancellationToken);
         var fromAddress = _options.SmtpFrom;
         var fromName = _options.SmtpFromName;
         var message = new MimeMessage();
@@ -110,14 +106,14 @@ public sealed class EmailReportService(
         message.To.Add(MailboxAddress.Parse(recipientEmail));
         message.Subject = $"Speel Audit - {DateTime.UtcNow.ToString("dd-MM-yyyy", CultureInfo.InvariantCulture)}";
         var body = new BodyBuilder { TextBody = "In de bijlage staat het speel-auditrapport als een ZIP-bestand met JSON-gegevens." };
-        body.Attachments.Add("speel-audit.zip", zipBytes, new ContentType("application", "zip"));
+        body.Attachments.Add("speel-audit.zip", stream, new ContentType("application", "zip"), cancellationToken);
         message.Body = body.ToMessageBody();
 
         using var client = _smtpClientFactory();
-        var secureOptions = useSsl ? (port == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls) : SecureSocketOptions.Auto;
-        await client.ConnectAsync(host, port, secureOptions, cancellationToken);
-        if (!string.IsNullOrWhiteSpace(username))
-            await client.AuthenticateAsync(username, password ?? string.Empty, cancellationToken);
+        var secureOptions = _options.SmtpUseSsl ? (_options.SmtpPort == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls) : SecureSocketOptions.Auto;
+        await client.ConnectAsync(host, _options.SmtpPort, secureOptions, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(_options.SmtpUsername))
+            await client.AuthenticateAsync(_options.SmtpUsername, _options.SmtpPassword, cancellationToken);
         await client.SendAsync(message, cancellationToken);
         await client.DisconnectAsync(true, cancellationToken);
     }

@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schema</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 2rem; max-width: 48rem; }
+  h1 { font-size: 1.5rem; margin: 0; }
+  h2 { font-size: 1.1rem; margin: 0 0 .75rem; }
+  a { color: #2d7d46; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .nav { margin-bottom: 1.5rem; font-size: .95rem; }
+  .panel { border: 1px solid #8884; border-radius: .5rem; padding: 1rem; background: #8881; margin-bottom: 1rem; }
+  .row { display: flex; gap: .75rem; flex-wrap: wrap; margin-bottom: .9rem; align-items: end; }
+  label { display: grid; gap: .25rem; font-size: .95rem; }
+  input, select, button { font: inherit; }
+  input[type=text], input[type=date], input[type=time], select { padding: .5rem .6rem; border: 1px solid #8888; border-radius: .4rem; background: Canvas; color: CanvasText; }
+  button { padding: .65rem 1rem; border-radius: .5rem; border: 1px solid #8888; cursor: pointer; background: #8881; }
+  button:hover { background: #8883; }
+  button.primary { background: #2d7d46; color: #fff; border-color: #2d7d46; }
+  button.danger { color: #b42318; border-color: #b42318; }
+  .genre-options, .day-options { display: flex; flex-wrap: wrap; gap: .45rem .9rem; }
+  .genre-options label, .day-options label { display: inline-flex; align-items: center; gap: .3rem; white-space: nowrap; }
+  .rules { list-style: none; padding: 0; margin: 0; display: grid; gap: .75rem; }
+  .rule { border-bottom: 1px solid #8883; padding-bottom: .75rem; display: grid; gap: .35rem; }
+  .rule:last-child { border-bottom: 0; padding-bottom: 0; }
+  .rule-title { display: flex; justify-content: space-between; gap: 1rem; align-items: start; }
+  .rule-title strong { overflow-wrap: anywhere; }
+  .muted { opacity: .75; }
+  #status { min-height: 1.4rem; font-size: .95rem; }
+  @media (max-width: 36rem) {
+    body { padding: 1rem; }
+    .row { display: grid; }
+    button { width: fit-content; }
+  }
+</style>
+</head>
+<body>
+<div class="nav"><a href="/">Terug naar muziekbediening</a> &middot; <a href="/report">Rapporten</a></div>
+<h1>Schema</h1>
+<div style="height: 1rem;"></div>
+
+<section class="panel">
+  <h2 id="formTitle">Regel toevoegen</h2>
+  <input type="hidden" id="ruleId">
+  <div class="row">
+    <label>Naam
+      <input type="text" id="ruleName" placeholder="Werkweek" autocomplete="off">
+    </label>
+    <label>Type
+      <select id="ruleType">
+        <option value="daily">Dagelijks</option>
+        <option value="weekly">Wekelijks</option>
+        <option value="date">Specifieke datum</option>
+      </select>
+    </label>
+    <label id="dateField">Datum
+      <input type="date" id="ruleDate">
+    </label>
+    <label>Van
+      <input type="time" id="startTime" value="10:00">
+    </label>
+    <label>Tot
+      <input type="time" id="endTime" value="17:00">
+    </label>
+  </div>
+  <div class="row" id="daysRow">
+    <label>Dagen</label>
+    <div class="day-options" id="dayOptions"></div>
+  </div>
+  <div class="row">
+    <label>Genres</label>
+    <div class="genre-options" id="genreOptions"></div>
+  </div>
+  <div class="row">
+    <button class="primary" id="btnSaveRule">Opslaan</button>
+    <button id="btnReset" type="button">Nieuw</button>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Regels</h2>
+  <ul class="rules" id="rules"></ul>
+</section>
+
+<p id="status"></p>
+
+<script>
+const $ = id => document.getElementById(id);
+const baseGenres = ['Blues', 'Relax', 'Country', 'Dance', 'Elektronisch', 'Folk', 'Funk', 'Hip-hop', 'Jazz', 'Klassiek', 'Latin', 'Metal', 'Pop', 'Reggae', 'Rock', 'Soul', 'Wereldmuziek'];
+const days = [
+  ['MO', 'Ma'], ['TU', 'Di'], ['WE', 'Wo'], ['TH', 'Do'], ['FR', 'Vr'], ['SA', 'Za'], ['SU', 'Zo']
+];
+let rules = [];
+let availableGenres = [...baseGenres];
+
+function say(text) { $('status').textContent = text; }
+
+async function api(path, options = {}) {
+  const send = () => {
+    const token = localStorage.getItem('apiToken');
+    return fetch(path, { ...options, headers: { ...options.headers, ...(token ? { 'X-Api-Token': token } : {}) } });
+  };
+
+  const res = await send();
+  if (res.status !== 401) return res;
+
+  let token = null;
+  try {
+    token = prompt('Toegangscode voor deze pagina:');
+  } catch {
+    return res;
+  }
+  if (!token) return res;
+  localStorage.setItem('apiToken', token);
+  return send();
+}
+
+function genreValues(value) {
+  return value && value !== 'onbekend' ? value.split(',').map(item => item.trim()).filter(Boolean) : [];
+}
+
+function renderChecks(container, values, selected = []) {
+  container.replaceChildren(...values.map(([value, labelText]) => {
+    const label = document.createElement('label');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.value = value;
+    checkbox.checked = selected.includes(value);
+    label.append(checkbox, ' ' + labelText);
+    return label;
+  }));
+}
+
+function selected(container) {
+  return [...container.querySelectorAll('input:checked')].map(input => input.value);
+}
+
+function selectedDayCodes(rule) {
+  const match = /(?:^|;)BYDAY=([^;]+)/i.exec(rule.rRule || '');
+  return match ? match[1].split(',').map(item => item.trim()).filter(Boolean) : [];
+}
+
+function ruleType(rule) {
+  if (rule.date) return 'date';
+  return /FREQ=WEEKLY/i.test(rule.rRule || '') ? 'weekly' : 'daily';
+}
+
+function recurrenceLabel(rule) {
+  if (rule.date) return rule.date;
+  if (/FREQ=DAILY/i.test(rule.rRule || '')) return 'Dagelijks';
+  const selectedDays = selectedDayCodes(rule);
+  const labels = days.filter(([code]) => selectedDays.includes(code)).map(([, label]) => label);
+  return labels.length ? labels.join(', ') : 'Wekelijks';
+}
+
+function timeLabel(rule) {
+  if (!rule.startTime && !rule.endTime) return 'Hele dag';
+  return `${rule.startTime || '00:00'}-${rule.endTime || '24:00'}`;
+}
+
+function renderRules() {
+  const list = $('rules');
+  if (rules.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = 'Geen regels';
+    list.replaceChildren(li);
+    return;
+  }
+
+  list.replaceChildren(...rules.map(rule => {
+    const li = document.createElement('li');
+    li.className = 'rule';
+    const title = document.createElement('div');
+    title.className = 'rule-title';
+    const name = document.createElement('strong');
+    name.textContent = rule.name || 'Naamloze regel';
+    const actions = document.createElement('div');
+    const edit = document.createElement('button');
+    edit.textContent = 'Wijzig';
+    edit.onclick = () => fillForm(rule);
+    const remove = document.createElement('button');
+    remove.className = 'danger';
+    remove.textContent = 'Verwijder';
+    remove.onclick = () => removeRule(rule.id);
+    actions.append(edit, ' ', remove);
+    title.append(name, actions);
+
+    const meta = document.createElement('div');
+    meta.className = 'muted';
+    meta.textContent = `${recurrenceLabel(rule)} · ${timeLabel(rule)}`;
+    const genres = document.createElement('div');
+    genres.textContent = rule.genres.join(', ');
+    li.append(title, meta, genres);
+    return li;
+  }));
+}
+
+function updateTypeFields() {
+  const type = $('ruleType').value;
+  $('dateField').style.display = type === 'date' ? 'grid' : 'none';
+  $('daysRow').style.display = type === 'weekly' ? 'flex' : 'none';
+}
+
+function resetForm() {
+  $('formTitle').textContent = 'Regel toevoegen';
+  $('ruleId').value = '';
+  $('ruleName').value = '';
+  $('ruleType').value = 'daily';
+  $('ruleDate').value = '';
+  $('startTime').value = '10:00';
+  $('endTime').value = '17:00';
+  renderChecks($('dayOptions'), days, ['MO', 'TU', 'TH', 'FR']);
+  renderChecks($('genreOptions'), availableGenres.map(value => [value, value]));
+  updateTypeFields();
+}
+
+function fillForm(rule) {
+  $('formTitle').textContent = 'Regel wijzigen';
+  $('ruleId').value = rule.id;
+  $('ruleName').value = rule.name;
+  $('ruleType').value = ruleType(rule);
+  $('ruleDate').value = rule.date || '';
+  $('startTime').value = rule.startTime || '';
+  $('endTime').value = rule.endTime || '';
+  renderChecks($('dayOptions'), days, selectedDayCodes(rule));
+  renderChecks($('genreOptions'), availableGenres.map(value => [value, value]), rule.genres);
+  updateTypeFields();
+}
+
+function formRule() {
+  const type = $('ruleType').value;
+  const genres = selected($('genreOptions'));
+  if (genres.length === 0) throw new Error('Kies minimaal een genre');
+
+  let rRule = 'FREQ=DAILY';
+  let date = null;
+  if (type === 'weekly') {
+    const selectedDays = selected($('dayOptions'));
+    if (selectedDays.length === 0) throw new Error('Kies minimaal een dag');
+    rRule = 'FREQ=WEEKLY;BYDAY=' + selectedDays.join(',');
+  } else if (type === 'date') {
+    date = $('ruleDate').value;
+    if (!date) throw new Error('Kies een datum');
+    rRule = '';
+  }
+
+  return {
+    id: $('ruleId').value || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
+    name: $('ruleName').value.trim() || (type === 'date' ? 'Speciale datum' : 'Schemaregel'),
+    rRule,
+    date,
+    startTime: $('startTime').value || null,
+    endTime: $('endTime').value || null,
+    genres
+  };
+}
+
+async function saveRule() {
+  let rule;
+  try {
+    rule = formRule();
+  } catch (err) {
+    say(err.message);
+    return;
+  }
+
+  const index = rules.findIndex(item => item.id === rule.id);
+  const nextRules = index >= 0 ? rules.map(item => item.id === rule.id ? rule : item) : [...rules, rule];
+  await saveSchedule(nextRules);
+  resetForm();
+}
+
+async function removeRule(id) {
+  await saveSchedule(rules.filter(rule => rule.id !== id));
+  resetForm();
+}
+
+async function saveSchedule(nextRules) {
+  say('Opslaan...');
+  const res = await api('/api/schedule', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rules: nextRules })
+  });
+  if (res.status === 500 || res.status === 401) {
+    say('Er is een serverfout opgetreden');
+    return;
+  }
+  const data = await res.json();
+  if (!res.ok) {
+    say(data.error || 'Opslaan mislukt');
+    return;
+  }
+
+  rules = data.rules;
+  renderRules();
+  say('Opgeslagen');
+}
+
+async function loadGenres() {
+  const res = await api('/api/tracks');
+  if (!res.ok) return;
+  const tracks = await res.json();
+  const found = tracks.flatMap(track => genreValues(track.genre));
+  availableGenres = [...new Set([...baseGenres, ...found])].sort((a, b) => a.localeCompare(b, 'nl'));
+}
+
+async function loadSchedule() {
+  say('Laden...');
+  resetForm();
+  await loadGenres();
+  const res = await api('/api/schedule');
+  const data = await res.json();
+  if (!res.ok) {
+    say(data.error || 'Laden mislukt');
+    return;
+  }
+
+  rules = data.rules;
+  renderRules();
+  say('');
+}
+
+$('ruleType').onchange = updateTypeFields;
+$('btnSaveRule').onclick = saveRule;
+$('btnReset').onclick = resetForm;
+renderChecks($('dayOptions'), days, ['MO', 'TU', 'TH', 'FR']);
+loadSchedule();
+</script>
+</body>
+</html>

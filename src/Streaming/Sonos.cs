@@ -75,7 +75,7 @@ public sealed partial class SonosService(HttpClient http, StreamingOptions optio
 
             if (speakers.Count == 0) // NOSONAR
             {
-                logger.LogWarning("Geen Sonos-speakers gevonden; controleer of UDP 1900 open staat of stel Streaming:Sonos:Addresses in.");
+                logger.LogWarning("Geen Sonos-speakers gevonden; controleer SSDP-multicast naar 239.255.255.250:1900, UDP-antwoorden op de gelogde lokale zoekpoort en HTTP-bereikbaarheid op poort 1400, of stel Streaming:Sonos:Addresses in.");
                 if (_cached.Count > 0)
                 {
                     logger.LogWarning("Behoud {SpeakerCount} eerder gevonden Sonos-speaker(s) na een lege discovery.", _cached.Count);
@@ -184,6 +184,8 @@ public sealed partial class SonosService(HttpClient http, StreamingOptions optio
         using var udp = new UdpClient(AddressFamily.InterNetwork);
         udp.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
         udp.Client.Bind(new IPEndPoint(IPAddress.Any, _discoveryPort));
+        logger.LogInformation("SSDP zoekt via {LocalEndpoint} naar {MulticastAddress}:1900; UDP-antwoorden moeten op deze lokale zoekpoort binnenkomen.",
+            udp.Client.LocalEndPoint, SsdpMulticastAddress);
         var payload = Encoding.ASCII.GetBytes(request);
         var target = new IPEndPoint(IPAddress.Parse(SsdpMulticastAddress), 1900);
 

@@ -59,7 +59,7 @@ public sealed class SonosServiceTests
 
     private static SonosService CreateService(RecordingHandler handler)
     {
-        var options = new StreamingOptions { MusicRoot = string.Empty, DatabasePath = string.Empty };
+        var options = new StreamingOptions { MusicRoot = string.Empty, DatabasePath = string.Empty, SmtpPassword = "smtppass", SmtpUsername = "smtpuser" };
         return new SonosService(new HttpClient(handler), options, NullLogger<SonosService>.Instance);
     }
 

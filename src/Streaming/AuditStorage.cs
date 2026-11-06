@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using System.Globalization;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
 namespace Streaming;
@@ -18,6 +20,7 @@ public interface IAuditStorage
     Task RebuildMonthlySummaryAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PlayAuditReportItem>> GetPlayAuditReportAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyDictionary<string, string>> GetEffectiveGenresAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyDictionary<string, TrackMetadata>> GetTrackMetadataAsync(CancellationToken cancellationToken = default);
     Task SetGenreOverrideAsync(long trackId, string? genre, CancellationToken cancellationToken = default);
 }
 
@@ -215,6 +218,23 @@ public sealed class AuditStorage (StreamingOptions options): IAuditStorage
         return result;
     }
 
+    public async Task<IReadOnlyDictionary<string, TrackMetadata>> GetTrackMetadataAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT RelativePath, MetadataJson FROM MusicFile";
+        var result = new Dictionary<string, TrackMetadata>(StringComparer.OrdinalIgnoreCase);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var metadata = reader.IsDBNull(1)
+                ? null
+                : JsonSerializer.Deserialize(reader.GetString(1), StreamingJsonContext.Default.TrackMetadata);
+            result[reader.GetString(0)] = metadata ?? EmptyMetadata;
+        }
+        return result;
+    }
+
     public async Task SetGenreOverrideAsync(long trackId, string? genre, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
@@ -324,20 +344,70 @@ public sealed class AuditStorage (StreamingOptions options): IAuditStorage
         {
             using var file = TagLib.File.Create(fullPath);
             var title = string.IsNullOrWhiteSpace(file.Tag.Title) ? Path.GetFileNameWithoutExtension(fullPath) : file.Tag.Title.Trim();
-            var performers = EscapeJson(string.Join(", ", file.Tag.Performers));
-            var album = EscapeJson(file.Tag.Album);
+            var performers = string.Join(", ", file.Tag.Performers);
+            var album = file.Tag.Album ?? string.Empty;
             var genre = MusicReportService.FirstTagValue(file.Tag.Genres, file.Tag.FirstGenre);
-            var genres = EscapeJson(string.Join(", ", file.Tag.Genres));
-            var copyright = EscapeJson(file.Tag.Copyright);
-            var publisher = EscapeJson(file.Tag.Publisher);
-            var isrc = EscapeJson(file.Tag.ISRC);
-            var metadata = $"{{\"performers\":\"{performers}\",\"album\":\"{album}\",\"year\":{file.Tag.Year},\"genres\":\"{genres}\",\"copyright\":\"{copyright}\",\"publisher\":\"{publisher}\",\"isrc\":\"{isrc}\"}}";
+            var trackMetadata = new TrackMetadata(
+                performers,
+                album,
+                file.Tag.Year,
+                string.Join(", ", file.Tag.Genres),
+                file.Tag.Copyright ?? string.Empty,
+                file.Tag.Publisher ?? string.Empty,
+                file.Tag.ISRC ?? string.Empty,
+                ReadTextField(file.Tag, "Mood"),
+                ReadIntegerField(file.Tag, "Energy"),
+                ReadIntegerField(file.Tag, "Tempo", "TempoBPM", "BPM"),
+                ReadBooleanField(file.Tag, "Instrumental"));
+            var metadata = JsonSerializer.Serialize(trackMetadata, StreamingJsonContext.Default.TrackMetadata);
             return (title, metadata, genre);
         }
         catch (Exception)
         {
-            return (Path.GetFileNameWithoutExtension(fullPath), "{}", null);
+            return (Path.GetFileNameWithoutExtension(fullPath), JsonSerializer.Serialize(EmptyMetadata, StreamingJsonContext.Default.TrackMetadata), null);
         }
+    }
+
+    private static readonly TrackMetadata EmptyMetadata = new("", "", 0, "", "", "", "", null, null, null, null);
+
+    private static string? ReadTextField(TagLib.Tag tag, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            var values = tag switch
+            {
+                TagLib.Ogg.XiphComment xiph => xiph.GetField(name),
+                TagLib.Id3v2.Tag id3 => TagLib.Id3v2.UserTextInformationFrame.Get(id3, name, false)?.Text ?? [],
+                _ => []
+            };
+            var value = values.Select(item => item.Trim()).FirstOrDefault(item => item.Length > 0);
+            if (value is not null)
+                return value;
+        }
+
+        return null;
+    }
+
+    private static int? ReadIntegerField(TagLib.Tag tag, params string[] names)
+    {
+        var text = ReadTextField(tag, names);
+        var number = text?.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
+        return int.TryParse(number, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : null;
+    }
+
+    private static bool? ReadBooleanField(TagLib.Tag tag, params string[] names)
+    {
+        var value = ReadTextField(tag, names);
+        if (value is null)
+            return null;
+        if (bool.TryParse(value, out var boolean))
+            return boolean;
+        return value switch
+        {
+            "1" or "yes" or "y" => true,
+            "0" or "no" or "n" => false,
+            _ => null
+        };
     }
 
     internal static string EscapeJson(string? value) =>

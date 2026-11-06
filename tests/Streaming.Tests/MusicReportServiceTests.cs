@@ -28,14 +28,14 @@ public sealed class MusicReportServiceTests : IDisposable
         }
     }
 
-    private  StreamingOptions CreateStreamingOptions()
+    private  StreamingOptions CreateStreamingOptions() =>new StreamingOptions()
     {
-        return new StreamingOptions
-        {
-            MusicRoot = _tempMusicDir,
-            DatabasePath = Path.Combine(_tempMusicDir, "database.db")
-        };
-    }
+        MusicRoot = _tempMusicDir,
+        DatabasePath = Path.Combine(_tempMusicDir, "database.db"),
+        SmtpPassword = "smtppass",
+        SmtpUsername = "smtpuser"
+    };
+
 
     [Fact]
     public void CollectReportData_EmptyDirectory_ReturnsZeroTracks()

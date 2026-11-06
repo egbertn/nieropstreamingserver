@@ -7,7 +7,20 @@ public sealed record ErrorResponse(string Error);
 
 public sealed record SonosErrorResponse(string Error, int Code);
 
-public sealed record TrackResponse(string Path, string Title, string Url, string Genre);
+public sealed record TrackMetadata(
+    string Performers,
+    string Album,
+    uint Year,
+    string Genres,
+    string Copyright,
+    string Publisher,
+    string Isrc,
+    string? Mood,
+    int? Energy,
+    int? TempoBpm,
+    bool? Instrumental);
+
+public sealed record TrackResponse(string Path, string Title, string Url, string Genre, TrackMetadata Metadata);
 
 public sealed record GenreUpdateRequest(string Path, string? Genre);
 
@@ -32,6 +45,19 @@ public sealed record EmailReportRequest(string Email);
 
 public sealed record EmailReportResponse(bool Success, string Message);
 
+public sealed record ScheduleRuleResponse(
+    string Id,
+    string Name,
+    string RRule,
+    string? Date,
+    string? StartTime,
+    string? EndTime,
+    IReadOnlyList<string> Genres);
+
+public sealed record ScheduleResponse(IReadOnlyList<ScheduleRuleResponse> Rules);
+
+public sealed record ScheduleSaveRequest(IReadOnlyList<ScheduleRuleResponse> Rules);
+
 [JsonSourceGenerationOptions(JsonSerializerDefaults.Web, DefaultIgnoreCondition = JsonIgnoreCondition.Never)]
 [JsonSerializable(typeof(ErrorResponse))]
 [JsonSerializable(typeof(SonosErrorResponse))]
@@ -45,6 +71,11 @@ public sealed record EmailReportResponse(bool Success, string Message);
 [JsonSerializable(typeof(EmailReportRequest))]
 [JsonSerializable(typeof(EmailReportResponse))]
 [JsonSerializable(typeof(GenreUpdateRequest))]
+[JsonSerializable(typeof(ScheduleResponse))]
+[JsonSerializable(typeof(ScheduleSaveRequest))]
+[JsonSerializable(typeof(ScheduleRuleResponse))]
+[JsonSerializable(typeof(ScheduleRuleResponse[]))]
 [JsonSerializable(typeof(SonosSpeaker[]))]
 [JsonSerializable(typeof(IReadOnlyList<SonosSpeaker>))]
+[JsonSerializable(typeof(TrackMetadata))]
 public partial class StreamingJsonContext : JsonSerializerContext;

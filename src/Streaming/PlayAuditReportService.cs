@@ -5,12 +5,12 @@ namespace Streaming;
 
 public interface IPlayAuditReportService
 {
-    Task<byte[]> GenerateZipAsync(CancellationToken cancellationToken = default);
+    Task<Stream> GenerateZipAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed class PlayAuditReportService(IAuditStorage storage) : IPlayAuditReportService
 {
-    public async Task<byte[]> GenerateZipAsync(CancellationToken cancellationToken = default)
+    public async Task<Stream> GenerateZipAsync(CancellationToken cancellationToken = default)
     {
         await storage.RebuildMonthlySummaryAsync(cancellationToken);
         var report = await storage.GetPlayAuditReportAsync(cancellationToken);
@@ -44,7 +44,7 @@ public sealed class PlayAuditReportService(IAuditStorage storage) : IPlayAuditRe
             writer.WriteEndObject();
         }
 
-        await using var zipStream = new MemoryStream();
+        var zipStream = new MemoryStream();
         using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create, leaveOpen: true))
         {
             var entry = archive.CreateEntry("speel-audit.json", CompressionLevel.Optimal);
@@ -52,6 +52,7 @@ public sealed class PlayAuditReportService(IAuditStorage storage) : IPlayAuditRe
             jsonStream.Position = 0;
             await jsonStream.CopyToAsync(entryStream, cancellationToken);
         }
-        return zipStream.ToArray();
+        zipStream.Position = 0;
+        return zipStream;
     }
 }

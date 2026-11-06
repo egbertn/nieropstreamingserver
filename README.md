@@ -215,7 +215,7 @@ journalctl -u kestrel-music -f
 | `ConnectionStrings:sqlite` | `data/streaming.db` | SQLite catalogue and audit database; relative paths are resolved against the application directory |
 | `Streaming:Playback:UseSonos` | `true` | `true` controls Sonos; `false` plays locally via `ffplay` to the default USB-DAC/ALSA output and audits as `Broadcast` |
 | `Streaming:Playback:FfplayPath` | `ffplay` | command or absolute path for the local broadcast audio player |
-| `Streaming:Sonos:Addresses` | empty | comma-separated speaker IPs; skips SSDP |
+| `Streaming:Sonos:Addresses` | empty | JSON array or comma-separated speaker IPs; skips SSDP when a configured speaker responds |
 | `Streaming:Sonos:DiscoveryPort` | 0 | fixed UDP source port for SSDP; set it when you need to open a specific firewall port |
 | `Smtp:Host` | empty | SMTP server used for emailing reports; email endpoints fail when it is not configured |
 | `Smtp:Port` | 587 | SMTP server port |
@@ -233,6 +233,7 @@ sudo systemctl edit kestrel-music
 ```ini
 [Service]
 Environment=Streaming__Sonos__Addresses=192.168.1.211
+Environment=Streaming__Sonos__DiscoveryPort=1901
 Environment=ConnectionStrings__sqlite=data/streaming.db
 Environment=Smtp__Host=smtp.example.com
 Environment=Smtp__Username=reports@example.com
@@ -248,15 +249,29 @@ sudo ufw allow from 192.168.1.0/24 to any port 8080 proto tcp   # speaker fetche
 sudo ufw allow from 192.168.1.0/24 to any port 1901 proto udp   # SSDP replies
 ```
 
-The UDP rule is unnecessary if you fill in `Streaming:Sonos:Addresses`.
+The UDP rule must match `Streaming:Sonos:DiscoveryPort` (1901 in the shipped
+configuration). A value of 0 uses a dynamically assigned port, so opening 1901 alone
+will not help. SSDP requests go to multicast address `239.255.255.250:1900`, but
+unicast replies return to the service's source port, not necessarily 1900.
+If outgoing traffic is restricted, also allow UDP to `239.255.255.250:1900`
+and TCP to the speakers on port 1400.
+
+The UDP rule is unnecessary when a speaker configured in `Streaming:Sonos:Addresses`
+responds over HTTP on port 1400.
 
 ## Troubleshooting
 
 **Player does nothing, play blinks.** Check that you are using a playable URL. `/` returns
 HTML; players need `/playlist.m3u` or `/music/<file>.mp3`.
 
-**"Geen speaker gevonden".** SSDP replies are blocked by the firewall. Open UDP 1901 or fill
-in the speaker address. Find the IP with `sudo nmap -p 1400 --open 192.168.1.0/24`.
+**"Geen speaker gevonden".** This does not necessarily mean the firewall is blocking
+UDP 1900. Check the local search port in the SSDP log and match the incoming UDP rule
+to that port. Multicast may also be blocked by wifi client isolation, a VLAN boundary,
+or routed over the wrong interface. Inspect traffic during discovery with
+`sudo tcpdump -ni any 'udp port 1900 or udp port 1901'`.
+For a configured speaker, test HTTP directly with
+`curl --fail --max-time 5 http://192.168.1.211:1400/xml/device_description.xml`.
+Find speaker IPs with `sudo nmap -p 1400 --open 192.168.1.0/24`.
 
 **Every API call returns 401.** The token is wrong or missing. Clear it in the browser with
 `localStorage.removeItem('apiToken')` and reload, or check `Streaming__ApiToken` on the Pi.

@@ -11,10 +11,10 @@ public sealed class PlayAuditReportServiceTests
         var storage = new FakeAuditStorage();
         var service = new PlayAuditReportService(storage);
 
-        var zipBytes = await service.GenerateZipAsync();
+        using var zipStream = await service.GenerateZipAsync();
 
         Assert.True(storage.Rebuilt);
-        using var archive = new ZipArchive(new MemoryStream(zipBytes), ZipArchiveMode.Read);
+        using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read);
         var entry = Assert.Single(archive.Entries);
         Assert.Equal("speel-audit.json", entry.Name);
         using var content = entry.Open();
@@ -37,6 +37,8 @@ public sealed class PlayAuditReportServiceTests
         public Task RecordPlayAsync(long trackId, DateTime playedAtUtc, string playbackMode, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task<IReadOnlyDictionary<string, string>> GetEffectiveGenresAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
+        public Task<IReadOnlyDictionary<string, TrackMetadata>> GetTrackMetadataAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<string, TrackMetadata>>(new Dictionary<string, TrackMetadata>());
         public Task SetGenreOverrideAsync(long trackId, string? genre, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task RebuildMonthlySummaryAsync(CancellationToken cancellationToken = default)
         {
