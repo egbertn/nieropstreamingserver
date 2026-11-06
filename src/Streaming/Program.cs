@@ -14,7 +14,13 @@ var streamingOptions = StreamingOptions.FromConfiguration(builder.Configuration,
 builder.Host.UseSystemd();
 var services = builder.Services;
 services.AddSingleton(streamingOptions);
-services.AddHttpClient<SonosService>(c => c.Timeout = TimeSpan.FromSeconds(10));
+// Singleton (i.p.v. transient typed client) zodat de speakercache van 5 minuten gedeeld wordt
+// tussen requests en de PlaybackAuditWorker; anders draait elke poll een volledige discovery.
+services.AddHttpClient(nameof(SonosService), c => c.Timeout = TimeSpan.FromSeconds(10));
+services.AddSingleton(sp => new SonosService(
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(SonosService)),
+    sp.GetRequiredService<StreamingOptions>(),
+    sp.GetRequiredService<ILogger<SonosService>>()));
 services.AddSingleton<IMusicReportService, MusicReportService>();
 services.AddSingleton<IAuditStorage, AuditStorage>();
 services.AddSingleton<IPlayAuditReportService, PlayAuditReportService>();
