@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Schema</title>
+<title data-i18n="schedule">Schema</title>
+<script src="/i18n.js"></script>
 <style>
   :root { color-scheme: light dark; }
   body { font-family: system-ui, sans-serif; margin: 0; padding: 2rem; max-width: 48rem; }
@@ -38,50 +39,50 @@
 </style>
 </head>
 <body>
-<div class="nav"><a href="/">Terug naar muziekbediening</a> &middot; <a href="/report">Rapporten</a></div>
-<h1>Schema</h1>
+<div class="nav"><a href="/" data-i18n="backToControls">Terug naar muziekbediening</a> &middot; <a href="/report" data-i18n="reports">Rapporten</a></div>
+<h1 data-i18n="schedule">Schema</h1>
 <div style="height: 1rem;"></div>
 
 <section class="panel">
-  <h2 id="formTitle">Regel toevoegen</h2>
+  <h2 id="formTitle" data-i18n="addRule">Regel toevoegen</h2>
   <input type="hidden" id="ruleId">
   <div class="row">
-    <label>Naam
-      <input type="text" id="ruleName" placeholder="Werkweek" autocomplete="off">
+    <label><span data-i18n="name">Naam</span>
+      <input type="text" id="ruleName" data-i18n-placeholder="namePlaceholder" placeholder="Werkweek" autocomplete="off">
     </label>
-    <label>Type
+    <label><span data-i18n="type">Type</span>
       <select id="ruleType">
-        <option value="daily">Dagelijks</option>
-        <option value="weekly">Wekelijks</option>
-        <option value="date">Specifieke datum</option>
+        <option value="daily" data-i18n="daily">Dagelijks</option>
+        <option value="weekly" data-i18n="weekly">Wekelijks</option>
+        <option value="date" data-i18n="specificDate">Specifieke datum</option>
       </select>
     </label>
-    <label id="dateField">Datum
+    <label id="dateField"><span data-i18n="date">Datum</span>
       <input type="date" id="ruleDate">
     </label>
-    <label>Van
+    <label><span data-i18n="from">Van</span>
       <input type="time" id="startTime" value="10:00">
     </label>
-    <label>Tot
+    <label><span data-i18n="to">Tot</span>
       <input type="time" id="endTime" value="17:00">
     </label>
   </div>
   <div class="row" id="daysRow">
-    <label>Dagen</label>
+    <label data-i18n="days">Dagen</label>
     <div class="day-options" id="dayOptions"></div>
   </div>
   <div class="row">
-    <label>Genres</label>
+    <label data-i18n="genresLabel">Genres</label>
     <div class="genre-options" id="genreOptions"></div>
   </div>
   <div class="row">
-    <button class="primary" id="btnSaveRule">Opslaan</button>
-    <button id="btnReset" type="button">Nieuw</button>
+    <button class="primary" id="btnSaveRule" data-i18n="save">Opslaan</button>
+    <button id="btnReset" type="button" data-i18n="newRule">Nieuw</button>
   </div>
 </section>
 
 <section class="panel">
-  <h2>Regels</h2>
+  <h2 data-i18n="rules">Regels</h2>
   <ul class="rules" id="rules"></ul>
 </section>
 
@@ -90,9 +91,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const baseGenres = ['Blues', 'Relax', 'Country', 'Dance', 'Elektronisch', 'Folk', 'Funk', 'Hip-hop', 'Jazz', 'Klassiek', 'Latin', 'Metal', 'Pop', 'Reggae', 'Rock', 'Soul', 'Wereldmuziek'];
-const days = [
-  ['MO', 'Ma'], ['TU', 'Di'], ['WE', 'Wo'], ['TH', 'Do'], ['FR', 'Vr'], ['SA', 'Za'], ['SU', 'Zo']
-];
+const days = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'].map(code => [code, dayLabel(code)]);
 let rules = [];
 let availableGenres = [...baseGenres];
 
@@ -109,7 +108,7 @@ async function api(path, options = {}) {
 
   let token = null;
   try {
-    token = prompt('Toegangscode voor deze pagina:');
+    token = prompt(t('accessPrompt'));
   } catch {
     return res;
   }
@@ -150,14 +149,14 @@ function ruleType(rule) {
 
 function recurrenceLabel(rule) {
   if (rule.date) return rule.date;
-  if (/FREQ=DAILY/i.test(rule.rRule || '')) return 'Dagelijks';
+  if (/FREQ=DAILY/i.test(rule.rRule || '')) return t('daily');
   const selectedDays = selectedDayCodes(rule);
   const labels = days.filter(([code]) => selectedDays.includes(code)).map(([, label]) => label);
-  return labels.length ? labels.join(', ') : 'Wekelijks';
+  return labels.length ? labels.join(', ') : t('weekly');
 }
 
 function timeLabel(rule) {
-  if (!rule.startTime && !rule.endTime) return 'Hele dag';
+  if (!rule.startTime && !rule.endTime) return t('allDay');
   return `${rule.startTime || '00:00'}-${rule.endTime || '24:00'}`;
 }
 
@@ -166,7 +165,7 @@ function renderRules() {
   if (rules.length === 0) {
     const li = document.createElement('li');
     li.className = 'muted';
-    li.textContent = 'Geen regels';
+    li.textContent = t('noRules');
     list.replaceChildren(li);
     return;
   }
@@ -177,14 +176,14 @@ function renderRules() {
     const title = document.createElement('div');
     title.className = 'rule-title';
     const name = document.createElement('strong');
-    name.textContent = rule.name || 'Naamloze regel';
+    name.textContent = rule.name || t('unnamedRule');
     const actions = document.createElement('div');
     const edit = document.createElement('button');
-    edit.textContent = 'Wijzig';
+    edit.textContent = t('edit');
     edit.onclick = () => fillForm(rule);
     const remove = document.createElement('button');
     remove.className = 'danger';
-    remove.textContent = 'Verwijder';
+    remove.textContent = t('remove');
     remove.onclick = () => removeRule(rule.id);
     actions.append(edit, ' ', remove);
     title.append(name, actions);
@@ -193,7 +192,7 @@ function renderRules() {
     meta.className = 'muted';
     meta.textContent = `${recurrenceLabel(rule)} · ${timeLabel(rule)}`;
     const genres = document.createElement('div');
-    genres.textContent = rule.genres.join(', ');
+    genres.textContent = rule.genres.map(genreLabel).join(', ');
     li.append(title, meta, genres);
     return li;
   }));
@@ -206,7 +205,7 @@ function updateTypeFields() {
 }
 
 function resetForm() {
-  $('formTitle').textContent = 'Regel toevoegen';
+  $('formTitle').textContent = t('addRule');
   $('ruleId').value = '';
   $('ruleName').value = '';
   $('ruleType').value = 'daily';
@@ -214,12 +213,12 @@ function resetForm() {
   $('startTime').value = '10:00';
   $('endTime').value = '17:00';
   renderChecks($('dayOptions'), days, ['MO', 'TU', 'TH', 'FR']);
-  renderChecks($('genreOptions'), availableGenres.map(value => [value, value]));
+  renderChecks($('genreOptions'), availableGenres.map(value => [value, genreLabel(value)]));
   updateTypeFields();
 }
 
 function fillForm(rule) {
-  $('formTitle').textContent = 'Regel wijzigen';
+  $('formTitle').textContent = t('editRule');
   $('ruleId').value = rule.id;
   $('ruleName').value = rule.name;
   $('ruleType').value = ruleType(rule);
@@ -227,30 +226,30 @@ function fillForm(rule) {
   $('startTime').value = rule.startTime || '';
   $('endTime').value = rule.endTime || '';
   renderChecks($('dayOptions'), days, selectedDayCodes(rule));
-  renderChecks($('genreOptions'), availableGenres.map(value => [value, value]), rule.genres);
+  renderChecks($('genreOptions'), availableGenres.map(value => [value, genreLabel(value)]), rule.genres);
   updateTypeFields();
 }
 
 function formRule() {
   const type = $('ruleType').value;
   const genres = selected($('genreOptions'));
-  if (genres.length === 0) throw new Error('Kies minimaal een genre');
+  if (genres.length === 0) throw new Error(t('chooseGenre'));
 
   let rRule = 'FREQ=DAILY';
   let date = null;
   if (type === 'weekly') {
     const selectedDays = selected($('dayOptions'));
-    if (selectedDays.length === 0) throw new Error('Kies minimaal een dag');
+    if (selectedDays.length === 0) throw new Error(t('chooseDay'));
     rRule = 'FREQ=WEEKLY;BYDAY=' + selectedDays.join(',');
   } else if (type === 'date') {
     date = $('ruleDate').value;
-    if (!date) throw new Error('Kies een datum');
+    if (!date) throw new Error(t('chooseDate'));
     rRule = '';
   }
 
   return {
     id: $('ruleId').value || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
-    name: $('ruleName').value.trim() || (type === 'date' ? 'Speciale datum' : 'Schemaregel'),
+    name: $('ruleName').value.trim() || (type === 'date' ? t('specialDate') : t('scheduleRule')),
     rRule,
     date,
     startTime: $('startTime').value || null,
@@ -280,25 +279,25 @@ async function removeRule(id) {
 }
 
 async function saveSchedule(nextRules) {
-  say('Opslaan...');
+  say(t('saving'));
   const res = await api('/api/schedule', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ rules: nextRules })
   });
   if (res.status === 500 || res.status === 401) {
-    say('Er is een serverfout opgetreden');
+    say(t('serverError'));
     return;
   }
   const data = await res.json();
   if (!res.ok) {
-    say(data.error || 'Opslaan mislukt');
+    say(data.error || t('saveFailed'));
     return;
   }
 
   rules = data.rules;
   renderRules();
-  say('Opgeslagen');
+  say(t('savedMsg'));
 }
 
 async function loadGenres() {
@@ -306,17 +305,17 @@ async function loadGenres() {
   if (!res.ok) return;
   const tracks = await res.json();
   const found = tracks.flatMap(track => genreValues(track.genre));
-  availableGenres = [...new Set([...baseGenres, ...found])].sort((a, b) => a.localeCompare(b, 'nl'));
+  availableGenres = [...new Set([...baseGenres, ...found])].sort((a, b) => a.localeCompare(b, LANG));
 }
 
 async function loadSchedule() {
-  say('Laden...');
+  say(t('loading'));
   resetForm();
   await loadGenres();
   const res = await api('/api/schedule');
   const data = await res.json();
   if (!res.ok) {
-    say(data.error || 'Laden mislukt');
+    say(data.error || t('loadFailed'));
     return;
   }
 

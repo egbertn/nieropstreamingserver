@@ -1,0 +1,175 @@
+'use strict';
+// Client-side i18n: the first browser language is used when supported, otherwise English.
+// Genre and day *values* are data and never translated; only their display labels are.
+const I18N = {
+  en: {
+    music: 'Music',
+    schedule: 'Schedule',
+    report: '\u{1F4CA} Report',
+    speaker: 'Speaker',
+    start: 'Start',
+    pause: 'Pause',
+    stop: 'Stop',
+    next: 'Next',
+    upload: 'Upload',
+    uploadMusic: 'Upload music',
+    invoiceOptional: 'Proof of purchase (optional)',
+    genresUpload: 'Genres (optional, applied to all selected files)',
+    noGenreChosen: 'No genre selected',
+    cancel: 'Cancel',
+    doUpload: 'Upload',
+    editGenres: 'Edit genres',
+    shuffle: 'Shuffle',
+    volume: 'Volume',
+    tracksHeading: 'Tracks',
+    accessPrompt: 'Access code for this page:',
+    busy: 'Busy...',
+    ok: 'Ok',
+    error: 'Error: ',
+    trackCount: '{n} tracks',
+    noSpeakerFound: 'no speaker found',
+    editGenre: 'Edit genre',
+    remove: 'Delete',
+    removeTrack: 'Delete {title}',
+    genreSaved: 'Genre updated',
+    confirmDelete: 'Are you sure you want to delete this file?',
+    deleted: 'Deleted',
+    noAudioSelected: 'No audio files selected',
+    uploading: 'Uploading...',
+    uploadResult: '{saved} uploaded, {skipped} skipped',
+    flaggedCopyright: ' \u2014 rejected due to suspected copyright: ',
+    licenseFor: 'License for {name} (optional) ',
+    backToControls: 'Back to music controls',
+    reports: 'Reports',
+    addRule: 'Add rule',
+    editRule: 'Edit rule',
+    name: 'Name',
+    namePlaceholder: 'Workweek',
+    type: 'Type',
+    daily: 'Daily',
+    weekly: 'Weekly',
+    specificDate: 'Specific date',
+    date: 'Date',
+    from: 'From',
+    to: 'To',
+    days: 'Days',
+    genresLabel: 'Genres',
+    save: 'Save',
+    newRule: 'New',
+    rules: 'Rules',
+    noRules: 'No rules',
+    unnamedRule: 'Unnamed rule',
+    edit: 'Edit',
+    allDay: 'All day',
+    chooseGenre: 'Choose at least one genre',
+    chooseDay: 'Choose at least one day',
+    chooseDate: 'Choose a date',
+    specialDate: 'Special date',
+    scheduleRule: 'Schedule rule',
+    saving: 'Saving...',
+    serverError: 'A server error occurred',
+    saveFailed: 'Saving failed',
+    savedMsg: 'Saved',
+    loading: 'Loading...',
+    loadFailed: 'Loading failed',
+    genres: { 'Elektronisch': 'Electronic', 'Klassiek': 'Classical', 'Wereldmuziek': 'World music', 'onbekend': 'unknown' },
+    dayNames: { MO: 'Mo', TU: 'Tu', WE: 'We', TH: 'Th', FR: 'Fr', SA: 'Sa', SU: 'Su' }
+  },
+  nl: {
+    music: 'Muziek',
+    schedule: 'Schema',
+    report: '\u{1F4CA} Rapport',
+    speaker: 'Speaker',
+    start: 'Start',
+    pause: 'Pauze',
+    stop: 'Stop',
+    next: 'Volgende',
+    upload: 'Upload',
+    uploadMusic: 'Muziek uploaden',
+    invoiceOptional: 'Aankoopbewijs (optioneel)',
+    genresUpload: 'Genres (optioneel, gelden voor alle geselecteerde bestanden)',
+    noGenreChosen: 'Geen genre gekozen',
+    cancel: 'Annuleren',
+    doUpload: 'Uploaden',
+    editGenres: 'Genres aanpassen',
+    shuffle: 'Willekeurige volgorde',
+    volume: 'Volume',
+    tracksHeading: 'Nummers',
+    accessPrompt: 'Toegangscode voor deze pagina:',
+    busy: 'Bezig...',
+    ok: 'Ok',
+    error: 'Fout: ',
+    trackCount: '{n} nummers',
+    noSpeakerFound: 'geen speaker gevonden',
+    editGenre: 'Genre aanpassen',
+    remove: 'Verwijderen',
+    removeTrack: 'Verwijder {title}',
+    genreSaved: 'Genre aangepast',
+    confirmDelete: 'Weet je zeker dat je deze file wilt verwijderen?',
+    deleted: 'Verwijderd',
+    noAudioSelected: 'Geen audiobestanden geselecteerd',
+    uploading: 'Uploaden...',
+    uploadResult: '{saved} ge\u00fcpload, {skipped} overgeslagen',
+    flaggedCopyright: ' \u2014 geweigerd wegens vermoedelijk auteursrecht: ',
+    licenseFor: 'Licentie voor {name} (optioneel) ',
+    backToControls: 'Terug naar muziekbediening',
+    reports: 'Rapporten',
+    addRule: 'Regel toevoegen',
+    editRule: 'Regel wijzigen',
+    name: 'Naam',
+    namePlaceholder: 'Werkweek',
+    type: 'Type',
+    daily: 'Dagelijks',
+    weekly: 'Wekelijks',
+    specificDate: 'Specifieke datum',
+    date: 'Datum',
+    from: 'Van',
+    to: 'Tot',
+    days: 'Dagen',
+    genresLabel: 'Genres',
+    save: 'Opslaan',
+    newRule: 'Nieuw',
+    rules: 'Regels',
+    noRules: 'Geen regels',
+    unnamedRule: 'Naamloze regel',
+    edit: 'Wijzig',
+    allDay: 'Hele dag',
+    chooseGenre: 'Kies minimaal een genre',
+    chooseDay: 'Kies minimaal een dag',
+    chooseDate: 'Kies een datum',
+    specialDate: 'Speciale datum',
+    scheduleRule: 'Schemaregel',
+    saving: 'Opslaan...',
+    serverError: 'Er is een serverfout opgetreden',
+    saveFailed: 'Opslaan mislukt',
+    savedMsg: 'Opgeslagen',
+    loading: 'Laden...',
+    loadFailed: 'Laden mislukt',
+    genres: {},
+    dayNames: { MO: 'Ma', TU: 'Di', WE: 'Wo', TH: 'Do', FR: 'Vr', SA: 'Za', SU: 'Zo' }
+  }
+};
+
+const LANG = (() => {
+  const first = (navigator.languages && navigator.languages[0]) || navigator.language || 'en';
+  const base = first.toLowerCase().split('-')[0];
+  return Object.hasOwn(I18N, base) ? base : 'en';
+})();
+
+function t(key, params) {
+  let text = I18N[LANG][key] ?? I18N.en[key] ?? key;
+  if (params)
+    for (const [name, value] of Object.entries(params))
+      text = text.replaceAll('{' + name + '}', value);
+  return text;
+}
+
+const genreLabel = value => I18N[LANG].genres[value] ?? value;
+const genreListLabel = value => (value || '').split(',').map(item => genreLabel(item.trim())).filter(Boolean).join(', ');
+const dayLabel = code => I18N[LANG].dayNames[code] ?? code;
+
+document.documentElement.lang = LANG;
+addEventListener('DOMContentLoaded', () => {
+  for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+  for (const el of document.querySelectorAll('[data-i18n-placeholder]')) el.placeholder = t(el.dataset.i18nPlaceholder);
+});

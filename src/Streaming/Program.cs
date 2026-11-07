@@ -115,6 +115,14 @@ string UrlFor(HttpRequest request, string relativePath)
     return $"{baseUrl}/music/{encoded}";
 }
 
+// The first Accept-Language entry decides the language of server-rendered pages and
+// API error messages: Dutch when it is "nl", anything else falls back to English.
+static bool PrefersDutch(HttpRequest request) =>
+    request.Headers.AcceptLanguage.ToString().Split(',')[0].Trim()
+        .StartsWith("nl", StringComparison.OrdinalIgnoreCase);
+
+static string L(HttpRequest request, string nl, string en) => PrefersDutch(request) ? nl : en;
+
 var auditStorage = app.Services.GetRequiredService<IAuditStorage>();
 await auditStorage.InitializeAsync();
 foreach (var track in EnumerateTracks())
@@ -132,11 +140,11 @@ app.MapGet("/api/tracks", async (HttpRequest request) =>
         metadata.GetValueOrDefault(t, new TrackMetadata("", "", 0, "", "", "", "", null, null, null, null)))).ToArray();
 });
 
-app.MapPost("/api/tracks/genre", async (GenreUpdateRequest request) =>
+app.MapPost("/api/tracks/genre", async (GenreUpdateRequest request, HttpRequest http) =>
 {
     var trackId = await auditStorage.FindTrackIdByRelativePathAsync(request.Path);
     if (trackId is null)
-        return Results.NotFound(new ErrorResponse("Track niet gevonden"));
+        return Results.NotFound(new ErrorResponse(L(http, "Track niet gevonden", "Track not found")));
 
     var genre = string.IsNullOrWhiteSpace(request.Genre) ? null : request.Genre.Trim();
     await auditStorage.SetGenreOverrideAsync(trackId.Value, genre);
@@ -146,7 +154,7 @@ app.MapPost("/api/tracks/genre", async (GenreUpdateRequest request) =>
 app.MapPost("/api/tracks", async (HttpRequest request, bool force = false) =>
 {
     if (!request.HasFormContentType)
-        return Results.BadRequest(new ErrorResponse("Geen upload gevonden"));
+        return Results.BadRequest(new ErrorResponse(L(request, "Geen upload gevonden", "No upload found")));
 
     var form = await request.ReadFormAsync();
     List<string> saved = [];
@@ -222,17 +230,17 @@ app.MapPost("/api/tracks", async (HttpRequest request, bool force = false) =>
     return Results.Ok(new UploadResponse(saved, skipped, flagged));
 }).DisableAntiforgery();
 
-app.MapDelete("/api/tracks/{*path}", (string path) =>
+app.MapDelete("/api/tracks/{*path}", (string path, HttpRequest request) =>
 {
     var full = Path.GetFullPath(Path.Combine(musicRoot, path));
     if (!full.StartsWith(Path.GetFullPath(musicRoot) + Path.DirectorySeparatorChar, StringComparison.Ordinal))
-        return Results.BadRequest(new ErrorResponse("Ongeldig pad"));
+        return Results.BadRequest(new ErrorResponse(L(request, "Ongeldig pad", "Invalid path")));
 
     if (!audioExtensions.Contains(Path.GetExtension(full).ToLowerInvariant()))
-        return Results.BadRequest(new ErrorResponse("Geen muziekbestand"));
+        return Results.BadRequest(new ErrorResponse(L(request, "Geen muziekbestand", "Not a music file")));
 
     if (!File.Exists(full))
-        return Results.NotFound(new ErrorResponse("Bestand bestaat niet"));
+        return Results.NotFound(new ErrorResponse(L(request, "Bestand bestaat niet", "File does not exist")));
 
     File.Delete(full);
     var checksumPath = full + ".checksum";
@@ -254,8 +262,9 @@ app.MapGet("/playlist.m3u", (HttpRequest request) =>
 
 app.MapGet("/tracks", (HttpRequest request) =>
 {
-    var sb = new StringBuilder("<!doctype html><meta charset=\"utf-8\"><title>Muziek</title><h1>Muziek</h1>");
-    sb.Append("<p><a href=\"/playlist.m3u\">playlist.m3u</a> &middot; <a href=\"/api/tracks\">api/tracks</a> &middot; <a href=\"/report\">Rapport (PDF)</a></p><ul>");
+    var title = L(request, "Muziek", "Music");
+    var sb = new StringBuilder($"<!doctype html><html lang=\"{L(request, "nl", "en")}\"><meta charset=\"utf-8\"><title>{title}</title><h1>{title}</h1>");
+    sb.Append($"<p><a href=\"/playlist.m3u\">playlist.m3u</a> &middot; <a href=\"/api/tracks\">api/tracks</a> &middot; <a href=\"/report\">{L(request, "Rapport (PDF)", "Report (PDF)")}</a></p><ul>");
     foreach (var track in EnumerateTracks())
     {
         var url = UrlFor(request, track);
@@ -266,10 +275,10 @@ app.MapGet("/tracks", (HttpRequest request) =>
     return Results.Content(sb.ToString(), "text/html", Encoding.UTF8);
 });
 
-app.MapGet("/report", () => Results.Content("""
-    <!doctype html><html lang="nl"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Rapporten</title><style>body{font-family:system-ui,sans-serif;margin:2rem;max-width:42rem}a{display:inline-block;margin:.5rem .5rem .5rem 0;padding:.7rem 1rem;border:1px solid #2d7d46;border-radius:.4rem;color:#2d7d46;text-decoration:none;font-weight:600}a:hover{background:#eaf5ed}</style>
-    <p><a href="/">Terug naar muziekbediening</a></p><h1>Rapporten</h1><a href="/report/music">Muziekcollectie</a><a href="/report/audit">Speel Audit</a>
+app.MapGet("/report", (HttpRequest request) => Results.Content($$"""
+    <!doctype html><html lang="{{L(request, "nl", "en")}}"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{L(request, "Rapporten", "Reports")}}</title><style>body{font-family:system-ui,sans-serif;margin:2rem;max-width:42rem}a{display:inline-block;margin:.5rem .5rem .5rem 0;padding:.7rem 1rem;border:1px solid #2d7d46;border-radius:.4rem;color:#2d7d46;text-decoration:none;font-weight:600}a:hover{background:#eaf5ed}</style>
+    <p><a href="/">{{L(request, "Terug naar muziekbediening", "Back to music controls")}}</a></p><h1>{{L(request, "Rapporten", "Reports")}}</h1><a href="/report/music">{{L(request, "Muziekcollectie", "Music collection")}}</a><a href="/report/audit">{{L(request, "Speel Audit", "Play Audit")}}</a>
     """, "text/html", Encoding.UTF8));
 
 app.MapGet("/schedule", () => Results.File(Path.Combine(app.Environment.WebRootPath, "schedule.html"), "text/html"));
@@ -293,8 +302,9 @@ app.MapGet("/report/music", (HttpRequest request, IMusicReportService reportServ
     }
 
     var data = reportService.CollectReportData();
+    var hourSuffix = L(request, "u", "h");
     var durationFormatted = data.TotalDuration.TotalHours >= 1
-        ? $"{(int)data.TotalDuration.TotalHours}u {data.TotalDuration.Minutes:D2}m {data.TotalDuration.Seconds:D2}s"
+        ? $"{(int)data.TotalDuration.TotalHours}{hourSuffix} {data.TotalDuration.Minutes:D2}m {data.TotalDuration.Seconds:D2}s"
         : $"{data.TotalDuration.Minutes:D2}m {data.TotalDuration.Seconds:D2}s";
 
     var sizeMb = data.TotalSizeBytes / (1024f * 1024f);
@@ -303,11 +313,11 @@ app.MapGet("/report/music", (HttpRequest request, IMusicReportService reportServ
     var sb = new StringBuilder();
     sb.Append($$"""
         <!doctype html>
-        <html lang="nl">
+        <html lang="{{L(request, "nl", "en")}}">
         <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Muziekcollectie Rapport</title>
+        <title>{{L(request, "Muziekcollectie Rapport", "Music Collection Report")}}</title>
         <style>
           :root { color-scheme: light dark; }
           body { font-family: system-ui, sans-serif; margin: 0; padding: 2rem; max-width: 52rem; }
@@ -335,38 +345,38 @@ app.MapGet("/report/music", (HttpRequest request, IMusicReportService reportServ
         </head>
         <body>
         <div class="nav">
-          <a href="/">&larr; Terug naar Muziekbediening</a> &middot; <a href="/tracks">Lijstweergave</a>
+          <a href="/">&larr; {{L(request, "Terug naar Muziekbediening", "Back to music controls")}}</a> &middot; <a href="/tracks">{{L(request, "Lijstweergave", "List view")}}</a>
         </div>
-        <h1>Muziekcollectie Rapport</h1>
+        <h1>{{L(request, "Muziekcollectie Rapport", "Music Collection Report")}}</h1>
 
         <div class="stats-grid">
-          <div class="stat-card"><div class="label">Nummers</div><div class="val">{{data.Tracks.Count}}</div></div>
-          <div class="stat-card"><div class="label">Speelduur</div><div class="val">{{durationFormatted}}</div></div>
-          <div class="stat-card"><div class="label">Grootte</div><div class="val">{{sizeFormatted}}</div></div>
-          <div class="stat-card"><div class="label">Vrij / CC</div><div class="val" style="color: #2d7d46;">{{data.FreeCount}}</div></div>
-          <div class="stat-card"><div class="label">Beschermd</div><div class="val" style="color: #dc2626;">{{data.ProtectedCount}}</div></div>
-          <div class="stat-card"><div class="label">Geen tags</div><div class="val">{{data.UnspecifiedCount}}</div></div>
+          <div class="stat-card"><div class="label">{{L(request, "Nummers", "Tracks")}}</div><div class="val">{{data.Tracks.Count}}</div></div>
+          <div class="stat-card"><div class="label">{{L(request, "Speelduur", "Playing time")}}</div><div class="val">{{durationFormatted}}</div></div>
+          <div class="stat-card"><div class="label">{{L(request, "Grootte", "Size")}}</div><div class="val">{{sizeFormatted}}</div></div>
+          <div class="stat-card"><div class="label">{{L(request, "Vrij / CC", "Free / CC")}}</div><div class="val" style="color: #2d7d46;">{{data.FreeCount}}</div></div>
+          <div class="stat-card"><div class="label">{{L(request, "Beschermd", "Protected")}}</div><div class="val" style="color: #dc2626;">{{data.ProtectedCount}}</div></div>
+          <div class="stat-card"><div class="label">{{L(request, "Geen tags", "No tags")}}</div><div class="val">{{data.UnspecifiedCount}}</div></div>
         </div>
 
         <div class="actions">
           <a href="/report/pdf?download=true" class="btn primary">📥 Download PDF</a>
-          <a href="/report/pdf" target="_blank" class="btn">📄 Open PDF in nieuw tabblad</a>
+          <a href="/report/pdf" target="_blank" class="btn">📄 {{L(request, "Open PDF in nieuw tabblad", "Open PDF in new tab")}}</a>
         </div>
 
         <div class="email-box">
-          <h2>✉️ Rapport per E-mail versturen</h2>
+          <h2>✉️ {{L(request, "Rapport per E-mail versturen", "Send report by email")}}</h2>
           <form id="emailForm" onsubmit="event.preventDefault(); sendEmail();">
             <div class="email-row">
-              <input type="email" id="emailAddress" placeholder="naam@voorbeeld.nl" required>
-              <button type="submit" id="btnSendEmail" class="btn primary">Verstuur PDF</button>
+              <input type="email" id="emailAddress" placeholder="{{L(request, "naam@voorbeeld.nl", "name@example.com")}}" required>
+              <button type="submit" id="btnSendEmail" class="btn primary">{{L(request, "Verstuur PDF", "Send PDF")}}</button>
             </div>
             <div id="emailStatus"></div>
           </form>
         </div>
 
         <div class="preview-section">
-          <h2>Voorvertoning van PDF</h2>
-          <iframe src="/report/pdf" title="PDF Rapport Voorvertoning"></iframe>
+          <h2>{{L(request, "Voorvertoning van PDF", "PDF preview")}}</h2>
+          <iframe src="/report/pdf" title="{{L(request, "PDF Rapport Voorvertoning", "PDF report preview")}}"></iframe>
         </div>
 
         <script>
@@ -377,13 +387,13 @@ app.MapGet("/report/music", (HttpRequest request, IMusicReportService reportServ
           const email = emailInput.value.trim();
 
           if (!email) {
-            statusEl.textContent = 'Vul een geldig e-mailadres in.';
+            statusEl.textContent = '{{L(request, "Vul een geldig e-mailadres in.", "Enter a valid email address.")}}';
             statusEl.style.color = '#ef4444';
             return;
           }
 
           btn.disabled = true;
-          statusEl.textContent = 'Bezig met versturen...';
+          statusEl.textContent = '{{L(request, "Bezig met versturen...", "Sending...")}}';
           statusEl.style.color = 'inherit';
 
           try {
@@ -402,11 +412,11 @@ app.MapGet("/report/music", (HttpRequest request, IMusicReportService reportServ
               statusEl.textContent = '✓ ' + data.message;
               statusEl.style.color = '#2d7d46';
             } else {
-              statusEl.textContent = '✗ ' + (data.error || data.message || 'Verzenden mislukt');
+              statusEl.textContent = '✗ ' + (data.error || data.message || '{{L(request, "Verzenden mislukt", "Sending failed")}}');
               statusEl.style.color = '#ef4444';
             }
           } catch (err) {
-            statusEl.textContent = '✗ Fout: ' + err.message;
+            statusEl.textContent = '✗ {{L(request, "Fout", "Error")}}: ' + err.message;
             statusEl.style.color = '#ef4444';
           } finally {
             btn.disabled = false;
@@ -420,11 +430,11 @@ app.MapGet("/report/music", (HttpRequest request, IMusicReportService reportServ
     return Results.Content(sb.ToString(), "text/html", Encoding.UTF8);
 });
 
-app.MapGet("/report/audit", () => Results.Content("""
-    <!doctype html><html lang="nl"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Speel Audit</title><style>body{font-family:system-ui,sans-serif;margin:2rem;max-width:42rem}.btn,input{font:inherit;padding:.6rem .8rem;border:1px solid #777;border-radius:.4rem}.btn{color:#fff;background:#2d7d46;border-color:#2d7d46;cursor:pointer;text-decoration:none;display:inline-block}form{margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap}#status{min-height:1.4rem}</style>
-    <p><a href="/report">Terug naar rapporten</a></p><h1>Speel Audit</h1><p><a class="btn" href="/report/audit/download">Download ZIP met JSON</a></p><form id="form"><input id="email" type="email" placeholder="naam@voorbeeld.nl" required><button class="btn">Verstuur ZIP per e-mail</button></form><p id="status"></p>
-    <script>document.getElementById('form').onsubmit=async e=>{e.preventDefault();const s=document.getElementById('status');const token=localStorage.getItem('apiToken');const r=await fetch('/report/audit/email',{method:'POST',headers:{'Content-Type':'application/json',...(token?{'X-Api-Token':token}:{})},body:JSON.stringify({email:document.getElementById('email').value})});const d=await r.json();s.textContent=d.message||d.error||'Verzenden mislukt';};</script>
+app.MapGet("/report/audit", (HttpRequest request) => Results.Content($$"""
+    <!doctype html><html lang="{{L(request, "nl", "en")}}"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{L(request, "Speel Audit", "Play Audit")}}</title><style>body{font-family:system-ui,sans-serif;margin:2rem;max-width:42rem}.btn,input{font:inherit;padding:.6rem .8rem;border:1px solid #777;border-radius:.4rem}.btn{color:#fff;background:#2d7d46;border-color:#2d7d46;cursor:pointer;text-decoration:none;display:inline-block}form{margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap}#status{min-height:1.4rem}</style>
+    <p><a href="/report">{{L(request, "Terug naar rapporten", "Back to reports")}}</a></p><h1>{{L(request, "Speel Audit", "Play Audit")}}</h1><p><a class="btn" href="/report/audit/download">{{L(request, "Download ZIP met JSON", "Download ZIP with JSON")}}</a></p><form id="form"><input id="email" type="email" placeholder="{{L(request, "naam@voorbeeld.nl", "name@example.com")}}" required><button class="btn">{{L(request, "Verstuur ZIP per e-mail", "Send ZIP by email")}}</button></form><p id="status"></p>
+    <script>document.getElementById('form').onsubmit=async e=>{e.preventDefault();const s=document.getElementById('status');const token=localStorage.getItem('apiToken');const r=await fetch('/report/audit/email',{method:'POST',headers:{'Content-Type':'application/json',...(token?{'X-Api-Token':token}:{})},body:JSON.stringify({email:document.getElementById('email').value})});const d=await r.json();s.textContent=d.message||d.error||'{{L(request, "Verzenden mislukt", "Sending failed")}}';};</script>
     """, "text/html", Encoding.UTF8));
 
 app.MapGet("/report/pdf", (IMusicReportService reportService, bool download = false) =>
@@ -445,14 +455,16 @@ app.MapGet("/report/audit/download", async (IPlayAuditReportService reportServic
     return Results.Stream(zipStream, "application/zip", "speel-audit.zip");
 });
 
-app.MapPost("/report/audit/email", async (EmailReportRequest request, IEmailReportService emailService, CancellationToken ct) =>
+app.MapPost("/report/audit/email", async (EmailReportRequest request, HttpRequest http, IEmailReportService emailService, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Email))
-        return Results.BadRequest(new EmailReportResponse(false, "E-mailadres ontbreekt"));
+        return Results.BadRequest(new EmailReportResponse(false, L(http, "E-mailadres ontbreekt", "Email address is missing")));
     try
     {
         await emailService.SendPlayAuditReportAsync(request.Email, ct);
-        return Results.Ok(new EmailReportResponse(true, $"Het speelauditrapport is succesvol gemaild naar {request.Email}"));
+        return Results.Ok(new EmailReportResponse(true, L(http,
+            $"Het speelauditrapport is succesvol gemaild naar {request.Email}",
+            $"The play audit report was emailed to {request.Email}")));
     }
     catch (Exception ex)
     {
@@ -479,12 +491,14 @@ app.MapPost("/report/email", async (HttpRequest request, IEmailReportService ema
     }
 
     if (string.IsNullOrWhiteSpace(email))
-        return Results.BadRequest(new EmailReportResponse(false, "E-mailadres ontbreekt"));
+        return Results.BadRequest(new EmailReportResponse(false, L(request, "E-mailadres ontbreekt", "Email address is missing")));
 
     try
     {
         await emailService.SendReportAsync(email, ct);
-        return Results.Ok(new EmailReportResponse(true, $"Het rapport is succesvol gemaild naar {email}"));
+        return Results.Ok(new EmailReportResponse(true, L(request,
+            $"Het rapport is succesvol gemaild naar {email}",
+            $"The report was emailed to {email}")));
     }
     catch (Exception ex)
     {
@@ -492,15 +506,17 @@ app.MapPost("/report/email", async (HttpRequest request, IEmailReportService ema
     }
 });
 
-app.MapPost("/api/report/email", async (EmailReportRequest request, IEmailReportService emailService, CancellationToken ct) =>
+app.MapPost("/api/report/email", async (EmailReportRequest request, HttpRequest http, IEmailReportService emailService, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Email))
-        return Results.BadRequest(new EmailReportResponse(false, "E-mailadres ontbreekt"));
+        return Results.BadRequest(new EmailReportResponse(false, L(http, "E-mailadres ontbreekt", "Email address is missing")));
 
     try
     {
         await emailService.SendReportAsync(request.Email, ct);
-        return Results.Ok(new EmailReportResponse(true, $"Het rapport is succesvol gemaild naar {request.Email}"));
+        return Results.Ok(new EmailReportResponse(true, L(http,
+            $"Het rapport is succesvol gemaild naar {request.Email}",
+            $"The report was emailed to {request.Email}")));
     }
     catch (Exception ex)
     {
@@ -515,7 +531,7 @@ bool UseSonosPlayback() => app.Configuration.GetValue("Streaming:Playback:UseSon
 app.MapGet("/api/speakers", (SonosService sonos, bool refresh = false) =>
     UseSonosPlayback() ? sonos.DiscoverAsync(refresh) : Task.FromResult<IReadOnlyList<SonosSpeaker>>([new SonosSpeaker("USB-audio/DAC", "local", "broadcast")]));
 
-app.MapGet("/api/state", async (SonosService sonos, IBroadcastPlaybackService broadcast, string? speaker) =>
+app.MapGet("/api/state", async (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker) =>
 {
     if (!UseSonosPlayback())
     {
@@ -525,7 +541,7 @@ app.MapGet("/api/state", async (SonosService sonos, IBroadcastPlaybackService br
 
     var target = await sonos.ResolveAsync(speaker);
     if (target is null)
-        return Results.NotFound(new ErrorResponse("Geen speaker gevonden"));
+        return Results.NotFound(new ErrorResponse(L(request, "Geen speaker gevonden", "No speaker found")));
 
     var state = await sonos.GetTransportStateAsync(target);
     var position = await sonos.GetPositionInfoAsync(target);
@@ -542,7 +558,9 @@ app.MapPost("/api/play", async (SonosService sonos, IBroadcastPlaybackService br
     var schedule = request.HttpContext.RequestServices.GetRequiredService<IGenreScheduleService>();
     var (tracks, filteredBySchedule) = await EnumeratePlayableTracksAsync(schedule, request.HttpContext.RequestAborted);
     if (tracks.Length == 0)
-        return Results.BadRequest(new ErrorResponse(filteredBySchedule ? "Geen muziek gevonden voor huidig schema" : "Geen muziek gevonden"));
+        return Results.BadRequest(new ErrorResponse(filteredBySchedule
+            ? L(request, "Geen muziek gevonden voor huidig schema", "No music found for the current schedule")
+            : L(request, "Geen muziek gevonden", "No music found")));
 
     if (!UseSonosPlayback())
     {
@@ -552,7 +570,7 @@ app.MapPost("/api/play", async (SonosService sonos, IBroadcastPlaybackService br
 
     var target = await sonos.ResolveAsync(speaker);
     if (target is null)
-        return Results.NotFound(new ErrorResponse("Geen speaker gevonden"));
+        return Results.NotFound(new ErrorResponse(L(request, "Geen speaker gevonden", "No speaker found")));
 
     try
     {
@@ -586,13 +604,13 @@ async Task<(string[] Tracks, bool FilteredBySchedule)> EnumeratePlayableTracksAs
     return (tracks.Where(t => GenreScheduleService.TrackMatchesGenres(effectiveGenres.GetValueOrDefault(t, "onbekend"), activeGenres)).ToArray(), true);
 }
 
-app.MapPost("/api/pause", (SonosService sonos, IBroadcastPlaybackService broadcast, string? speaker) => PlaybackCommand(sonos, broadcast, speaker, s => sonos.PauseAsync(s), b => b.PauseAsync()));
-app.MapPost("/api/stop", (SonosService sonos, IBroadcastPlaybackService broadcast, string? speaker) => PlaybackCommand(sonos, broadcast, speaker, s => sonos.StopAsync(s), b => b.StopAsync()));
-app.MapPost("/api/next", (SonosService sonos, IBroadcastPlaybackService broadcast, string? speaker) => PlaybackCommand(sonos, broadcast, speaker, s => sonos.NextAsync(s), b => b.NextAsync()));
-app.MapPost("/api/previous", (SonosService sonos, IBroadcastPlaybackService broadcast, string? speaker) => PlaybackCommand(sonos, broadcast, speaker, s => sonos.PreviousAsync(s), b => b.PreviousAsync()));
-app.MapPost("/api/volume", (SonosService sonos, IBroadcastPlaybackService broadcast, int level, string? speaker) => PlaybackCommand(sonos, broadcast, speaker, s => sonos.SetVolumeAsync(s, level), b => { b.SetVolume(level); return Task.CompletedTask; }));
+app.MapPost("/api/pause", (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker) => PlaybackCommand(sonos, broadcast, request, speaker, s => sonos.PauseAsync(s), b => b.PauseAsync()));
+app.MapPost("/api/stop", (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker) => PlaybackCommand(sonos, broadcast, request, speaker, s => sonos.StopAsync(s), b => b.StopAsync()));
+app.MapPost("/api/next", (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker) => PlaybackCommand(sonos, broadcast, request, speaker, s => sonos.NextAsync(s), b => b.NextAsync()));
+app.MapPost("/api/previous", (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker) => PlaybackCommand(sonos, broadcast, request, speaker, s => sonos.PreviousAsync(s), b => b.PreviousAsync()));
+app.MapPost("/api/volume", (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, int level, string? speaker) => PlaybackCommand(sonos, broadcast, request, speaker, s => sonos.SetVolumeAsync(s, level), b => { b.SetVolume(level); return Task.CompletedTask; }));
 
-async Task<IResult> PlaybackCommand(SonosService sonos, IBroadcastPlaybackService broadcast, string? speaker, Func<SonosSpeaker, Task> sonosAction, Func<IBroadcastPlaybackService, Task> broadcastAction)
+async Task<IResult> PlaybackCommand(SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker, Func<SonosSpeaker, Task> sonosAction, Func<IBroadcastPlaybackService, Task> broadcastAction)
 {
     if (!UseSonosPlayback())
     {
@@ -600,14 +618,14 @@ async Task<IResult> PlaybackCommand(SonosService sonos, IBroadcastPlaybackServic
         return Results.Ok(new SpeakerResponse("USB-audio/DAC"));
     }
 
-    return await Command(sonos, speaker, sonosAction);
+    return await Command(sonos, request, speaker, sonosAction);
 }
 
-async Task<IResult> Command(SonosService sonos, string? speaker, Func<SonosSpeaker, Task> action)
+async Task<IResult> Command(SonosService sonos, HttpRequest request, string? speaker, Func<SonosSpeaker, Task> action)
 {
     var target = await sonos.ResolveAsync(speaker);
     if (target is null)
-        return Results.NotFound(new ErrorResponse("Geen speaker gevonden"));
+        return Results.NotFound(new ErrorResponse(L(request, "Geen speaker gevonden", "No speaker found")));
 
     try
     {

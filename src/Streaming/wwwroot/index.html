@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Muziek</title>
+<title data-i18n="music">Muziek</title>
+<script src="/i18n.js"></script>
 <style>
   :root { color-scheme: light dark; }
   body { font-family: system-ui, sans-serif; margin: 0; padding: 2rem; max-width: 40rem; }
@@ -33,38 +34,38 @@
 </head>
 <body>
 <div style="display: flex; justify-content: space-between; align-items: center;">
-  <h1 style="margin: 0;">Muziek</h1>
+  <h1 style="margin: 0;" data-i18n="music">Muziek</h1>
   <div style="display: flex; gap: .5rem; flex-wrap: wrap; justify-content: flex-end;">
-    <a href="/schedule" style="color: #2d7d46; text-decoration: none; font-weight: 600; font-size: 0.95rem; border: 1px solid #2d7d46; padding: 0.35rem 0.75rem; border-radius: 0.5rem;">Schema</a>
-    <a href="/report" style="color: #2d7d46; text-decoration: none; font-weight: 600; font-size: 0.95rem; border: 1px solid #2d7d46; padding: 0.35rem 0.75rem; border-radius: 0.5rem;">📊 Rapport</a>
+    <a href="/schedule" data-i18n="schedule" style="color: #2d7d46; text-decoration: none; font-weight: 600; font-size: 0.95rem; border: 1px solid #2d7d46; padding: 0.35rem 0.75rem; border-radius: 0.5rem;">Schema</a>
+    <a href="/report" data-i18n="report" style="color: #2d7d46; text-decoration: none; font-weight: 600; font-size: 0.95rem; border: 1px solid #2d7d46; padding: 0.35rem 0.75rem; border-radius: 0.5rem;">📊 Rapport</a>
   </div>
 </div>
 <div style="height: 1.25rem;"></div>
 
 <div class="row">
-  <label>Speaker
+  <label><span data-i18n="speaker">Speaker</span>
     <select id="speaker"></select>
   </label>
 </div>
 
 <div class="row">
-  <button id="btnStart" class="active" onclick="post('/api/play', 'shuffle=' + $('shuffle').checked)">Start</button>
-  <button id="btnPause" onclick="post('/api/pause')">Pauze</button>
-  <button id="btnStop" onclick="post('/api/stop')">Stop</button>
-  <button onclick="post('/api/next')">Volgende</button>
-  <button id="btnUpload">Upload</button>
+  <button id="btnStart" class="active" onclick="post('/api/play', 'shuffle=' + $('shuffle').checked)" data-i18n="start">Start</button>
+  <button id="btnPause" onclick="post('/api/pause')" data-i18n="pause">Pauze</button>
+  <button id="btnStop" onclick="post('/api/stop')" data-i18n="stop">Stop</button>
+  <button onclick="post('/api/next')" data-i18n="next">Volgende</button>
+  <button id="btnUpload" data-i18n="upload">Upload</button>
 </div>
 
 <dialog id="uploadDialog">
   <form method="dialog">
-    <h2>Muziek uploaden</h2>
+    <h2 data-i18n="uploadMusic">Muziek uploaden</h2>
     <div class="row">
-      <label>Aankoopbewijs (optioneel) <input type="file" id="invoiceFile" accept="application/pdf,image/*"></label>
+      <label><span data-i18n="invoiceOptional">Aankoopbewijs (optioneel)</span> <input type="file" id="invoiceFile" accept="application/pdf,image/*"></label>
     </div>
     <div class="row">
-      <label>Genres (optioneel, gelden voor alle geselecteerde bestanden)
+      <label><span data-i18n="genresUpload">Genres (optioneel, gelden voor alle geselecteerde bestanden)</span>
         <details class="genre-picker">
-          <summary id="uploadGenreSummary">Geen genre gekozen</summary>
+          <summary id="uploadGenreSummary" data-i18n="noGenreChosen">Geen genre gekozen</summary>
           <div class="genre-options" id="uploadGenreOptions"></div>
         </details>
       </label>
@@ -74,36 +75,36 @@
     </div>
     <div id="licenseFiles"></div>
     <div class="row">
-      <button value="cancel">Annuleren</button>
-      <button value="upload" id="btnDoUpload">Uploaden</button>
+      <button value="cancel" data-i18n="cancel">Annuleren</button>
+      <button value="upload" id="btnDoUpload" data-i18n="doUpload">Uploaden</button>
     </div>
   </form>
 </dialog>
 
 <dialog id="genreDialog">
   <form method="dialog">
-    <h2>Genres aanpassen</h2>
+    <h2 data-i18n="editGenres">Genres aanpassen</h2>
     <p id="genreTrackTitle"></p>
     <div class="genre-options" id="editGenreOptions"></div>
     <div class="row">
-      <button value="cancel">Annuleren</button>
-      <button value="save">Opslaan</button>
+      <button value="cancel" data-i18n="cancel">Annuleren</button>
+      <button value="save" data-i18n="save">Opslaan</button>
     </div>
   </form>
 </dialog>
 
 <div class="row">
-  <label><input type="checkbox" id="shuffle"> Willekeurige volgorde</label>
+  <label><input type="checkbox" id="shuffle"> <span data-i18n="shuffle">Willekeurige volgorde</span></label>
 </div>
 
 <div class="row">
-  <label>Volume <input type="range" id="volume" min="0" max="100" value="25"></label>
+  <label><span data-i18n="volume">Volume</span> <input type="range" id="volume" min="0" max="100" value="25"></label>
 </div>
 
 <p id="status"></p>
 <p id="nowPlaying"></p>
 
-<h2>Nummers</h2>
+<h2 data-i18n="tracksHeading">Nummers</h2>
 <ul id="tracks"></ul>
 
 <script>
@@ -124,7 +125,7 @@ function renderGenreOptions(container, selected = []) {
     checkbox.type = 'checkbox';
     checkbox.value = value;
     checkbox.checked = selected.includes(value);
-    label.append(checkbox, ' ' + value);
+    label.append(checkbox, ' ' + genreLabel(value));
     return label;
   }));
 }
@@ -134,7 +135,7 @@ function selectedGenres(container) {
 }
 
 function updateUploadGenreSummary() {
-  $('uploadGenreSummary').textContent = selectedGenres($('uploadGenreOptions')) || 'Geen genre gekozen';
+  $('uploadGenreSummary').textContent = genreListLabel(selectedGenres($('uploadGenreOptions'))) || t('noGenreChosen');
 }
 
 // The token is kept in localStorage; on a 401 we ask once and retry.
@@ -147,7 +148,7 @@ async function api(path, options = {}) {
   const res = await send();
   if (res.status !== 401) return res;
 
-  const token = prompt('Toegangscode voor deze pagina:');
+  const token = prompt(t('accessPrompt'));
   if (!token) return res;
   localStorage.setItem('apiToken', token);
   return send();
@@ -162,13 +163,13 @@ function speakerParam(extra = '') {
 }
 
 async function post(path, extra = '') {
-  say('Bezig...');
+  say(t('busy'));
   try {
     const res = await api(path + speakerParam(extra), { method: 'POST' });
     const data = await res.json();
-    say(res.ok ? (data.tracks ? data.tracks + ' nummers' : 'Ok') : data.error);
+    say(res.ok ? (data.tracks ? t('trackCount', { n: data.tracks }) : t('ok')) : data.error);
   } catch (err) {
-    say('Fout: ' + err.message);
+    say(t('error') + err.message);
   }
   refreshState();
 }
@@ -213,7 +214,7 @@ async function refreshState() {
 async function load() {
   const speakers = await (await api('/api/speakers')).json();
   $('speaker').innerHTML = speakers.map(s => `<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('')
-    || '<option value="">geen speaker gevonden</option>';
+    || `<option value="">${t('noSpeakerFound')}</option>`;
 
   await loadTracks();
   refreshState();
@@ -232,13 +233,13 @@ async function loadTracks() {
     title.textContent = track.title;
     const genre = document.createElement('button');
     genre.className = 'genre';
-    genre.title = 'Genre aanpassen';
-    genre.textContent = track.genre;
+    genre.title = t('editGenre');
+    genre.textContent = genreListLabel(track.genre);
     genre.onclick = () => editGenre(track);
     const del = document.createElement('button');
     del.className = 'delete';
-    del.title = 'Verwijderen';
-    del.setAttribute('aria-label', 'Verwijder ' + track.title);
+    del.title = t('remove');
+    del.setAttribute('aria-label', t('removeTrack', { title: track.title }));
     del.innerHTML = crossIcon;
     del.onclick = () => removeTrack(track);
     li.append(title, genre, del);
@@ -255,7 +256,7 @@ async function editGenre(track) {
 
 async function saveGenre(path) {
   const value = selectedGenres($('editGenreOptions'));
-  say('Bezig...');
+  say(t('busy'));
   try {
     const res = await api('/api/tracks/genre', {
       method: 'POST',
@@ -263,9 +264,9 @@ async function saveGenre(path) {
       body: JSON.stringify({ path, genre: value })
     });
     if (!res.ok) { say((await res.json()).error); return; }
-    say('Genre aangepast');
+    say(t('genreSaved'));
   } catch (err) {
-    say('Fout: ' + err.message);
+    say(t('error') + err.message);
     return;
   }
   await loadTracks();
@@ -279,21 +280,21 @@ async function refreshAfterChange(resumePlaying) {
 }
 
 async function removeTrack(track) {
-  if (!confirm('Weet je zeker dat je deze file wilt verwijderen?')) return;
+  if (!confirm(t('confirmDelete'))) return;
 
   const isCurrent = playback?.title === track.title;
   const wasPlaying = playback?.playing === true;
   if (isCurrent) await post('/api/stop');
 
-  say('Bezig...');
+  say(t('busy'));
   try {
     const path = track.path.split('/').map(encodeURIComponent).join('/');
     const res = await api('/api/tracks/' + path, { method: 'DELETE' });
     const data = await res.json();
-    say(res.ok ? 'Verwijderd' : data.error);
+    say(res.ok ? t('deleted') : data.error);
     if (!res.ok) return;
   } catch (err) {
-    say('Fout: ' + err.message);
+    say(t('error') + err.message);
     return;
   }
   await refreshAfterChange(isCurrent && wasPlaying);
@@ -302,7 +303,7 @@ async function removeTrack(track) {
 async function uploadFiles() {
   const input = $('uploadFiles');
   const files = [...input.files].filter(f => f.type.startsWith('audio/'));
-  if (files.length === 0) { say('Geen audiobestanden geselecteerd'); return; }
+  if (files.length === 0) { say(t('noAudioSelected')); return; }
 
   const body = new FormData();
   for (const file of files) body.append('files', file);
@@ -320,18 +321,18 @@ async function uploadFiles() {
   updateUploadGenreSummary();
   $('licenseFiles').replaceChildren();
 
-  say('Uploaden...');
+  say(t('uploading'));
   try {
     const res = await api('/api/tracks', { method: 'POST', body });
     const data = await res.json();
     if (!res.ok) { say(data.error); return; }
 
-    let msg = `${data.saved.length} geüpload, ${data.skipped.length} overgeslagen`;
+    let msg = t('uploadResult', { saved: data.saved.length, skipped: data.skipped.length });
     if (data.flagged.length > 0)
-      msg += ` — geweigerd wegens vermoedelijk auteursrecht: ${data.flagged.join('; ')}`;
+      msg += t('flaggedCopyright') + data.flagged.join('; ');
     say(msg);
   } catch (err) {
-    say('Fout: ' + err.message);
+    say(t('error') + err.message);
     return;
   }
   await refreshAfterChange(false);
@@ -346,7 +347,7 @@ $('uploadFiles').onchange = e => {
   for (const file of e.target.files) {
     if (!file.type.startsWith('audio/')) continue;
     const label = document.createElement('label');
-    label.textContent = `Licentie voor ${file.name} (optioneel) `;
+    label.textContent = t('licenseFor', { name: file.name });
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'application/pdf,image/*,.txt';
