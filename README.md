@@ -46,9 +46,16 @@ release ships a ready-to-run package for 64-bit ARM Linux (Raspberry Pi 3/4/5 ru
 64-bit OS such as Raspberry Pi OS 64-bit).
 At least **512 MB RAM** (512,000,000 bytes reported by the OS) and a running systemd
 service manager are required. In one deployment measurement, the service used about
-**167 MiB** of memory; actual use varies with workload.
+**167 MiB** of memory; actual use varies with workload, eg. using analog output instead of sonos over wifi, requires ffplay which may require an extra **100+ MiB** of memory.
 The installer checks architecture, RAM, available disk space, the release's minimum glibc
 version and native shared libraries before installing. Use a recent 64-bit OS.
+
+For Sonos playback, no local audio output is required. For local ALSA playback, install
+`ffmpeg` and its `ffplay` component as OS packages, and use an OS with a working ALSA audio
+output, such as an analog audio jack or a USB audio adapter/DAC. The quick installer asks
+which output to use and installs the `ffmpeg` package with `apt-get` if ALSA is selected
+and `ffplay` is not already available.
+
 ### Quick install
 
 Run on the Raspberry Pi:
@@ -146,6 +153,15 @@ sequenceDiagram
 
 The audio goes straight from the service to the speaker. The browser only sends commands;
 no sound passes through the till PC.
+
+### Local audio output (ALSA)
+
+Sonos is optional. In local broadcast mode, the service plays the playlist itself and sends
+the audio through Linux's ALSA audio system to the machine's default output. Connect
+powered speakers or an amplifier to the computer's analog audio jack (where available), or
+use a USB audio adapter/DAC. The browser still only sends playback commands; audio comes
+directly from the server's audio output. This mode does not contact or require a Sonos
+speaker. See [USB-DAC broadcast mode](#usb-dac-broadcast-mode) for setup instructions.
 
 ## Endpoints
 

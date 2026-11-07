@@ -10,12 +10,27 @@ trap 'echo "Installation failed at line $LINENO; the service has not been confir
 
 [[ $EUID -eq 0 ]] || fail "Run with sudo bash."
 [[ "$(uname -s)" == Linux ]] || fail "Only Linux is supported."
-for command in curl tar gzip sha256sum systemctl getconf df awk sort head mktemp openssl useradd ldd; do
+for command in curl tar gzip sha256sum systemctl getconf df awk sort head mktemp openssl useradd ldd grep sed; do
   command -v "$command" > /dev/null || fail "Missing command: $command. Install it first."
 done
 [[ "$(uname -m)" == aarch64 && "$(getconf LONG_BIT)" == 64 ]] \
   || fail "A 64-bit ARM Linux OS is required (not x86 or 32-bit Raspberry Pi OS)."
 [[ -d /run/systemd/system ]] || fail "systemd must be running as the system service manager."
+
+echo "Choose the audio output:"
+echo "  1) Sonos over Wi-Fi (default)"
+echo "  2) Local audio output (ALSA: analog jack or USB DAC)"
+while true; do
+  if ! IFS= read -r -p "Output [1/2, default 1]: " playback_choice < /dev/tty; then
+    fail "Could not read the audio output choice. Run from an interactive terminal."
+  fi
+  playback_choice="${playback_choice:-1}"
+  case "$playback_choice" in
+    1|sonos|SONOS) use_sonos=true; break ;;
+    2|alsa|ALSA) use_sonos=false; break ;;
+    *) echo "Choose 1 for Sonos or 2 for local ALSA output." >&2 ;;
+  esac
+done
 
 memory_bytes=$(( $(getconf _PHYS_PAGES) * $(getconf PAGE_SIZE) ))
 (( memory_bytes >= 512000000 )) || fail "At least 512 MB of RAM is required; detected $((memory_bytes / 1000000)) MB."
@@ -71,8 +86,27 @@ if [[ "$dependencies" == *"not found"* ]]; then
 $dependencies"
 fi
 
+if [[ "$use_sonos" == false ]] && ! command -v ffplay > /dev/null; then
+  command -v apt-get > /dev/null || fail "ffplay is required for local ALSA playback, but apt-get is not available to install it."
+  echo "ffplay was not found. Installing ffmpeg (which provides ffplay) with apt-get..."
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y ffmpeg
+  command -v ffplay > /dev/null || fail "ffplay is still missing after installing ffmpeg."
+fi
+
 bash "$package/install.sh" /opt/streaming streaming --no-start
+environment_file=/etc/kestrel-music/environment
+if grep -q '^Streaming__Playback__UseSonos=' "$environment_file"; then
+  sed -i "s|^Streaming__Playback__UseSonos=.*|Streaming__Playback__UseSonos=$use_sonos|" "$environment_file"
+else
+  printf 'Streaming__Playback__UseSonos=%s\n' "$use_sonos" >> "$environment_file"
+fi
 echo
 echo "Installation complete. Start the service:"
+if [[ "$use_sonos" == false ]]; then
+  echo "  Local ALSA playback is selected; ffplay is available."
+else
+  echo "  Sonos over Wi-Fi is selected."
+fi
 echo "  sudo systemctl enable --now kestrel-music"
 echo "Then open http://$(hostname).local:8080 (or this machine's LAN IP)."

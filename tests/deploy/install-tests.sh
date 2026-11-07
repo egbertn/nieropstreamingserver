@@ -8,7 +8,7 @@ trap 'echo "Test failed at line $LINENO" >&2; if [[ -f "$test_root/output" ]]; t
 export TEST_ROOT="$test_root"
 mkdir -p "$test_root/run/systemd/system" "$test_root/fixture/streaming-v1.2.3-linux-arm64"
 package="$test_root/fixture/streaming-v1.2.3-linux-arm64"
-printf '#!/bin/bash\nprintf "%%s\\n" "$*" > "$TEST_ROOT/invocation"\n' > "$package/install.sh"
+printf '#!/bin/bash\nprintf "%%s\\n" "$*" > "$TEST_ROOT/invocation"\nmkdir -p "$TEST_ROOT/etc/kestrel-music"\nprintf "Streaming__ApiToken=%%048d\\n" 0 > "$TEST_ROOT/etc/kestrel-music/environment"\n' > "$package/install.sh"
 printf '#!/bin/bash\nexit 0\n' > "$package/streaming"
 chmod +x "$package/streaming"
 echo 2.36 > "$package/glibc-minimum"
@@ -17,7 +17,10 @@ tar -czf "$test_root/release.tar.gz" -C "$test_root/fixture" streaming-v1.2.3-li
 # Only bypass root and systemd-host gates in the fixture; no real service is modified.
 sed -e '/^\[\[ \$EUID -eq 0 \]\]/d' \
   -e "s|/run/systemd/system|$test_root/run/systemd/system|" \
+  -e "s|/dev/tty|$test_root/tty|" \
+  -e "s|/etc/kestrel-music/environment|$test_root/etc/kestrel-music/environment|g" \
   "$repository/deploy/install-streaming.sh" > "$test_root/bootstrap.sh"
+echo 1 > "$test_root/tty"
 
 uname() {
   case "$1" in -s) echo "${TEST_OS:-Linux}" ;; -m) echo "${TEST_ARCH:-aarch64}" ;; esac
@@ -61,11 +64,22 @@ curl() {
   esac
 }
 useradd() { echo "useradd $*" >> "$TEST_ROOT/system.log"; }
+command() {
+  if [[ "${1:-}" == -v && "${2:-}" == ffplay ]]; then
+    [[ "${TEST_FFPLAY:-false}" == true ]]
+    return
+  fi
+  builtin command "$@"
+}
+apt-get() {
+  echo "apt-get $*" >> "$TEST_ROOT/apt.log"
+  TEST_FFPLAY=true
+}
 systemctl() {
   echo "$*" >> "$TEST_ROOT/system.log"
   if [[ "$1" == is-active ]]; then [[ "${TEST_ACTIVE:-false}" == true ]]; fi
 }
-export -f uname getconf df ldd curl useradd systemctl
+export -f uname getconf df ldd curl useradd command apt-get systemctl
 
 expect_failure() {
   local name="$1" message="$2"
@@ -95,13 +109,29 @@ mkdir "$test_root/run/systemd/system"
 
 bash "$test_root/bootstrap.sh" > "$test_root/output" 2>&1
 grep -Fxq '/opt/streaming streaming --no-start' "$test_root/invocation"
+grep -Fxq 'Streaming__Playback__UseSonos=true' "$test_root/etc/kestrel-music/environment"
 echo "PASS: exactly 512 MB, verified download and no-start installation"
+
+echo 2 > "$test_root/tty"
+env TEST_FFPLAY=false bash "$test_root/bootstrap.sh" > "$test_root/output" 2>&1
+grep -Fxq 'apt-get update' "$test_root/apt.log"
+grep -Fxq 'apt-get install -y ffmpeg' "$test_root/apt.log"
+grep -Fxq 'Streaming__Playback__UseSonos=false' "$test_root/etc/kestrel-music/environment"
+grep -q '^Streaming__ApiToken=[a-f0-9]\{48\}$' "$test_root/etc/kestrel-music/environment"
+echo "PASS: ALSA selection installs ffmpeg when ffplay is missing and preserves environment"
+
+echo 1 > "$test_root/tty"
+env TEST_FFPLAY=false bash "$test_root/bootstrap.sh" > "$test_root/output" 2>&1
+grep -Fxq 'Streaming__Playback__UseSonos=true' "$test_root/etc/kestrel-music/environment"
+[[ "$(wc -l < "$test_root/apt.log")" == 2 ]]
+echo "PASS: Sonos selection restores Sonos mode without installing ffmpeg"
 
 env TEST_GLIBC=2.40 bash "$test_root/bootstrap.sh" > "$test_root/output" 2>&1
 echo "PASS: newer glibc"
 
 # Exercise the real package copy/configuration logic using private filesystem paths.
 mkdir -p "$test_root/opt" "$test_root/etc/systemd/system" "$test_root/source/wwwroot/music"
+rm -f "$test_root/etc/kestrel-music/environment"
 sed -e 's/if \[\[ \$EUID -ne 0 \]\]; then/if false; then/' \
   -e "s|/etc/|$test_root/etc/|g" -e "s|/opt/|$test_root/opt/|g" \
   "$repository/deploy/install.sh" > "$test_root/source/install.sh"
