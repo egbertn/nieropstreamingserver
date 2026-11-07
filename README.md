@@ -29,6 +29,11 @@ file share, no container runtime, no app to install. Drop the published output o
 enable one systemd unit, and open the page in any browser on the network. Uploading and
 deleting tracks happens straight from that page, so the file share disappears too.
 
+The Raspberry Pi is the primary deployment target, but the service is not Pi-specific. It
+also runs on an Intel x64 laptop; other compatible Linux x64 computers, such as a NUC, are
+likely to work but have not been formally tested. The published installer and release
+instructions currently target Linux ARM64.
+
 Because the speaker fetches the audio from the Pi over the local network, playback uses no
 internet bandwidth at all and keeps working when the connection drops. That makes it a
 practical fit for a restaurant, salon or shop that wants to play its own music over its own
