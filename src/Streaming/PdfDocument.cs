@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Unicode;
 
 namespace Streaming;
 
@@ -255,10 +257,25 @@ public sealed class PdfDocument
         return chunk.ToString();
     }
 
+    /// <summary>
+    /// Formats the interpolated string directly as UTF-8 into <paramref name="buffer"/> and
+    /// writes the result, avoiding the intermediate string and byte[] allocations of
+    /// <c>Encoding.ASCII.GetBytes($"...")</c>.
+    /// </summary>
+    private static void WriteUtf8(BinaryWriter writer, Span<byte> buffer, IFormatProvider provider,
+        [InterpolatedStringHandlerArgument(nameof(buffer), nameof(provider))] ref Utf8.TryWriteInterpolatedStringHandler handler)
+    {
+        if (!Utf8.TryWrite(buffer, provider, ref handler, out var bytesWritten))
+            throw new InvalidOperationException("Buffer too small for PDF fragment.");
+        writer.Write(buffer[..bytesWritten]);
+    }
+
     public byte[] Build()
     {
         using var ms = new MemoryStream();
         using var writer = new BinaryWriter(ms, Encoding.ASCII);
+        var invariant = CultureInfo.InvariantCulture;
+        Span<byte> buffer = stackalloc byte[512];
 
         var objects = new List<long>();
 
@@ -267,7 +284,8 @@ public sealed class PdfDocument
             while (objects.Count < objNum)
                 objects.Add(0);
             objects[objNum - 1] = ms.Position;
-            writer.Write(Encoding.ASCII.GetBytes($"{objNum} 0 obj\n"));
+            Span<byte> header = stackalloc byte[32];
+            WriteUtf8(writer, header, CultureInfo.InvariantCulture, $"{objNum} 0 obj\n");
         }
 
         void WriteObjEnd()
@@ -310,7 +328,8 @@ public sealed class PdfDocument
         // Pages Catalog (Obj 2)
         WriteObjHeader(2);
         var kidsStr = string.Join(" ", pageObjNums.Select(n => $"{n} 0 R"));
-        writer.Write(Encoding.ASCII.GetBytes($"<<\n  /Type /Pages\n  /Kids [ {kidsStr} ]\n  /Count {_pages.Count}\n>>\n"));
+        Span<byte> kidsBuffer = kidsStr.Length + 64 <= buffer.Length ? buffer : stackalloc byte[kidsStr.Length + 64];
+        WriteUtf8(writer, kidsBuffer, invariant, $"<<\n  /Type /Pages\n  /Kids [ {kidsStr} ]\n  /Count {_pages.Count}\n>>\n");
         WriteObjEnd();
 
         // Page and Content objects
@@ -322,14 +341,14 @@ public sealed class PdfDocument
 
             // Page Object
             WriteObjHeader(pageObj);
-            writer.Write(Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
-                $"<<\n  /Type /Page\n  /Parent 2 0 R\n  /MediaBox [0 0 {PageWidth:0.##} {PageHeight:0.##}]\n  /Resources <<\n    /Font <<\n      /F1 3 0 R\n      /F2 4 0 R\n      /F3 5 0 R\n    >>\n  >>\n  /Contents {contentObj} 0 R\n>>\n")));
+            WriteUtf8(writer, buffer, invariant,
+                $"<<\n  /Type /Page\n  /Parent 2 0 R\n  /MediaBox [0 0 {PageWidth:0.##} {PageHeight:0.##}]\n  /Resources <<\n    /Font <<\n      /F1 3 0 R\n      /F2 4 0 R\n      /F3 5 0 R\n    >>\n  >>\n  /Contents {contentObj} 0 R\n>>\n");
             WriteObjEnd();
 
             // Content Object
             var contentBytes = Encoding.Latin1.GetBytes(page.Stream.ToString());
             WriteObjHeader(contentObj);
-            writer.Write(Encoding.ASCII.GetBytes($"<<\n  /Length {contentBytes.Length}\n>>\nstream\n"));
+            WriteUtf8(writer, buffer, invariant, $"<<\n  /Length {contentBytes.Length}\n>>\nstream\n");
             writer.Write(contentBytes);
             writer.Write("\nendstream\n"u8);
             WriteObjEnd();
@@ -339,15 +358,15 @@ public sealed class PdfDocument
         var xrefOffset = ms.Position;
         var totalObjects = nextObj;
 
-        writer.Write(Encoding.ASCII.GetBytes($"xref\n0 {totalObjects}\n0000000000 65535 f \n"));
+        WriteUtf8(writer, buffer, invariant, $"xref\n0 {totalObjects}\n0000000000 65535 f \n");
         for (var i = 1; i < totalObjects; i++)
         {
             var offset = objects[i - 1];
-            writer.Write(Encoding.ASCII.GetBytes($"{offset:D10} 00000 n \n"));
+            WriteUtf8(writer, buffer, invariant, $"{offset:D10} 00000 n \n");
         }
 
         // Trailer
-        writer.Write(Encoding.ASCII.GetBytes($"trailer\n<<\n  /Size {totalObjects}\n  /Root 1 0 R\n>>\nstartxref\n{xrefOffset}\n%%EOF\n"));
+        WriteUtf8(writer, buffer, invariant, $"trailer\n<<\n  /Size {totalObjects}\n  /Root 1 0 R\n>>\nstartxref\n{xrefOffset}\n%%EOF\n");
 
         return ms.ToArray();
     }
