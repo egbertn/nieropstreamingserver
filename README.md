@@ -41,7 +41,14 @@ wifi, without a streaming subscription and without the licensing and reliability
 that come with a cloud service.
 
 ## Installation
-Ik
+The application is a single, standalone native binary compiled with Native AOT. Every
+release ships a ready-to-run package for 64-bit ARM Linux (Raspberry Pi 3/4/5 running a
+64-bit OS such as Raspberry Pi OS 64-bit).
+At least **512 MB RAM** (512,000,000 bytes reported by the OS) and a running systemd
+service manager are required. In one deployment measurement, the service used about
+**167 MiB** of memory; actual use varies with workload.
+The installer checks architecture, RAM, available disk space, the release's minimum glibc
+version and native shared libraries before installing. Use a recent 64-bit OS.
 ### Quick install
 
 Run on the Raspberry Pi:
