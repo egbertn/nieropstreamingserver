@@ -20,6 +20,7 @@ Environment=Smtp__Username=
 Environment=Streaming__Playback__UseSonos=true
 Environment=Streaming__Port=8080
 Environment=Streaming__ApiToken=
+EnvironmentFile=-/etc/kestrel-music/environment
 
 # Set Streaming__ApiToken through a systemd override or environment file.
 User=__USER__

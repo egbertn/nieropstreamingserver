@@ -37,6 +37,49 @@ that come with a cloud service.
 
 No compiler or .NET SDK needed: every release ships a ready-to-run package for 64-bit ARM
 Linux (Raspberry Pi 3/4/5 running a 64-bit OS such as Raspberry Pi OS 64-bit).
+At least **512 MB RAM** (512,000,000 bytes reported by the OS) and a running systemd
+service manager are required. The installer checks architecture, RAM, available disk
+space, the release's minimum glibc version and native shared libraries before installing.
+Use a recent 64-bit OS; no .NET runtime is required.
+
+### Quick install
+
+Run on the Raspberry Pi:
+
+```bash
+curl -fsSL https://github.com/egbertn/streaming/releases/latest/download/install-streaming.sh | sudo bash
+sudo systemctl enable --now kestrel-music
+```
+
+The same script can be hosted at `https://nieropcomputervision.com/install-streaming.sh`:
+
+```bash
+curl -fsSL https://nieropcomputervision.com/install-streaming.sh | sudo bash
+sudo systemctl enable --now kestrel-music
+```
+
+**Website hosting prerequisite:** publish `deploy/install-streaming.sh` at that HTTPS URL
+before advertising the website command. It is also attached to every new release.
+Both commands run downloaded code as root; inspect the script first if preferred.
+The script downloads the latest stable GitHub release and verifies its SHA-256 checksum.
+This checks download integrity, not an independent publisher signature.
+
+Open **http://raspberrypi.local:8080** (or `http://<hostname>.local:8080` for another hostname).
+Enter the API token printed by the installer. You can retrieve it later with:
+
+```bash
+sudo cat /etc/kestrel-music/environment
+```
+
+The installer creates a dedicated, non-login `streaming` service account and does not
+start a new installation until you run the second command. On upgrades it stops the
+running service before copying files and restarts it afterwards.
+The `.local` address requires mDNS on the Pi and client. If it does not resolve, use the
+Pi's LAN IP in the browser and update `Streaming__PublicBaseUrl` in the environment file
+to that same LAN address, then restart `kestrel-music`. Do not expose this HTTP service to
+the internet.
+
+### Manual download
 
 1. Download the latest `streaming-<version>-linux-arm64.tar.gz` from the
    [releases page](https://github.com/egbertn/streaming/releases) onto the Pi.
@@ -53,15 +96,16 @@ Linux (Raspberry Pi 3/4/5 running a 64-bit OS such as Raspberry Pi OS 64-bit).
    sudo ./install.sh /opt/streaming "$USER"
    ```
 
-The installer copies the application to `/opt/streaming` (or the directory you pass as the
+The package installer copies the application to `/opt/streaming` (or the directory you pass as the
 first argument), installs and starts the `kestrel-music` systemd service as the given user,
 and waits for `/health` to respond. Re-running it with a newer release upgrades in place;
-the music collection in `wwwroot/music` and the SQLite database in `data/` are preserved.
+the music collection in `wwwroot/music`, SQLite database in `data/`, existing
+`appsettings.json`, systemd overrides and `/etc/kestrel-music/environment` are preserved.
 
 After installation, open `http://raspberrypi.local:8080` in a browser on the same network,
-set an API token (see [Access](#access)), and open the firewall ports (see
+enter the generated API token (see [Access](#access)), and open the firewall ports (see
 [Firewall](#firewall)). If the machine is not reachable as `raspberrypi.local`, override
-`Streaming__PublicBaseUrl` through `sudo systemctl edit kestrel-music`. For the USB-DAC
+`Streaming__PublicBaseUrl` in `/etc/kestrel-music/environment`. For the USB-DAC
 broadcast mode, additionally install `ffmpeg` (see
 [USB-DAC broadcast mode](#usb-dac-broadcast-mode)).
 
@@ -127,6 +171,10 @@ Everything under `/api` requires an `X-Api-Token` header matching `Streaming:Api
 control page asks for the token once and keeps it in `localStorage`. Because the header is a
 custom one, browsers send a CORS preflight for it, which also stops other websites from
 firing requests at the service.
+
+Release installations automatically generate a token in `/etc/kestrel-music/environment`.
+Edit that root-only file to change the token or public LAN URL and restart the service.
+The environment file takes precedence over `Environment=` entries in systemd overrides.
 
 Leave `Streaming:ApiToken` empty and the check is skipped entirely, which is convenient for
 local development; a warning is logged at startup. Generate a token with
@@ -231,7 +279,8 @@ x64 development laptop. The service unit remains managed independently on the Pi
 Pushing a tag matching `v*` runs `.github/workflows/release.yml` on the same
 `streaming-build` runner. It runs the tests, publishes the Native AOT executable and
 attaches `streaming-<tag>-linux-arm64.tar.gz` — containing the binary, `appsettings.json`,
-the control page, the systemd unit and `install.sh` — plus a SHA-256 checksum to a GitHub
+the control page, systemd unit, `install.sh`, license and minimum glibc version — plus a
+SHA-256 checksum and the standalone `install-streaming.sh` bootstrap script to a GitHub
 release. To cut a release:
 
 ```bash
@@ -250,6 +299,16 @@ The build runs natively on the ARM64 Justin runner and deploys the resulting exe
 the ARM64 Raspberry Pi.
 
 ## Quality checks
+
+Installer checks run without root privileges or changes to local services:
+
+```bash
+bash tests/deploy/install-tests.sh
+```
+
+They cover hardware requirements (including the 512 MB boundary), checksum failures,
+missing releases/libraries, disk space, initial installation, upgrades and health-check
+failures. The release workflow runs these checks before building the binary.
 
 Run the local checks with:
 

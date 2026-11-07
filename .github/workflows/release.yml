@@ -28,7 +28,9 @@ jobs:
 
       - name: Tests
         timeout-minutes: 10
-        run: dotnet test Streaming.slnx --configuration Release
+        run: |
+          bash tests/deploy/install-tests.sh
+          dotnet test Streaming.slnx --configuration Release
 
       - name: Publish ARM64 Native AOT
         run: |
@@ -51,6 +53,12 @@ jobs:
           cp -r publish/. "$PKG/"
           cp deploy/kestrel-music.service "$PKG/"
           cp deploy/install.sh "$PKG/"
+          readelf --version-info publish/streaming \
+            | grep -oE 'GLIBC_[0-9]+\.[0-9]+' \
+            | sed 's/GLIBC_//' | sort -Vu | tail -n 1 > "$PKG/glibc-minimum"
+          test -s "$PKG/glibc-minimum"
+          cp deploy/install-streaming.sh dist/install-streaming.sh
+          cp LICENSE "$PKG/"
           chmod +x "$PKG/install.sh" "$PKG/streaming"
           tar -czf "dist/$PKG.tar.gz" "$PKG"
           (cd dist && sha256sum "$PKG.tar.gz" > "$PKG.tar.gz.sha256")
@@ -62,6 +70,7 @@ jobs:
           files: |
             dist/*.tar.gz
             dist/*.sha256
+            dist/install-streaming.sh
           generate_release_notes: true
           body: |
             Self-contained Native AOT build for 64-bit ARM Linux (Raspberry Pi 3/4/5
@@ -70,9 +79,8 @@ jobs:
             Install:
 
             ```bash
-            tar -xzf streaming-${{ github.ref_name }}-linux-arm64.tar.gz
-            cd streaming-${{ github.ref_name }}-linux-arm64
-            sudo ./install.sh /opt/streaming "$USER"
+            curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/install-streaming.sh | sudo bash
+            sudo systemctl enable --now kestrel-music
             ```
 
             See the [installation instructions](https://github.com/${{ github.repository }}#installation)
