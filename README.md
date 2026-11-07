@@ -11,6 +11,8 @@ network; the `/api` endpoints are protected by a shared token, the audio itself 
 without authentication because the speaker cannot send headers.
 
 ![The control page in a browser](demo.jpg)
+![The schedule music in a browser](schedule.jpg)
+![The catalog as report in a browser](catalog%20report%20as%20pdf.jpg)
 
 ## Why
 
