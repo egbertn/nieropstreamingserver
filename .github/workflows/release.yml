@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash -leo pipefail {0}
+
+env:
+  RUNTIME: linux-arm64
+
+jobs:
+  release:
+    runs-on: [self-hosted, Linux, ARM64, streaming-build]
+    env:
+      DOTNET_ROOT: /home/moeder/.dotnet
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Add local .NET SDK to PATH
+        run: echo "$DOTNET_ROOT" >> "$GITHUB_PATH"
+
+      - name: Tests
+        timeout-minutes: 10
+        run: dotnet test Streaming.slnx --configuration Release
+
+      - name: Publish ARM64 Native AOT
+        run: |
+          rm -rf publish
+          dotnet publish src/Streaming/streaming.csproj \
+            --configuration Release \
+            --runtime "$RUNTIME" \
+            --self-contained true \
+            --output publish \
+            -p:DebugType=none \
+            -p:DebugSymbols=false \
+            -p:SourceRevisionId=${{ github.sha }}
+          test -x publish/streaming
+
+      - name: Package release archive
+        run: |
+          PKG="streaming-${GITHUB_REF_NAME}-${RUNTIME}"
+          rm -rf dist "$PKG"
+          mkdir -p dist "$PKG"
+          cp -r publish/. "$PKG/"
+          cp deploy/kestrel-music.service "$PKG/"
+          cp deploy/install.sh "$PKG/"
+          chmod +x "$PKG/install.sh" "$PKG/streaming"
+          tar -czf "dist/$PKG.tar.gz" "$PKG"
+          (cd dist && sha256sum "$PKG.tar.gz" > "$PKG.tar.gz.sha256")
+          rm -rf "$PKG"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.sha256
+          generate_release_notes: true
+          body: |
+            Self-contained Native AOT build for 64-bit ARM Linux (Raspberry Pi 3/4/5
+            with a 64-bit OS). No .NET runtime required on the target machine.
+
+            Install:
+
+            ```bash
+            tar -xzf streaming-${{ github.ref_name }}-linux-arm64.tar.gz
+            cd streaming-${{ github.ref_name }}-linux-arm64
+            sudo ./install.sh /opt/streaming "$USER"
+            ```
+
+            See the [installation instructions](https://github.com/${{ github.repository }}#installation)
+            for configuration, firewall rules and the API token.

@@ -4,7 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-# __USER__ and __DIR__ are filled in by publish.sh.
+# __USER__ and __DIR__ are filled in by deploy/install.sh.
 Type=notify
 WorkingDirectory=__DIR__
 ExecStart=__DIR__/streaming

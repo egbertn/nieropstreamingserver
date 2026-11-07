@@ -1,4 +1,4 @@
-# Music streaming for Sonos
+# Music streaming for Sonos (or classic Audio Output)
 
 The project is organized as a .NET solution with the application in `src/Streaming`
 and unit tests in `tests/Streaming.Tests`. The music collection under
@@ -32,6 +32,38 @@ internet bandwidth at all and keeps working when the connection drops. That make
 practical fit for a restaurant, salon or shop that wants to play its own music over its own
 wifi, without a streaming subscription and without the licensing and reliability questions
 that come with a cloud service.
+
+## Installation
+
+No compiler or .NET SDK needed: every release ships a ready-to-run package for 64-bit ARM
+Linux (Raspberry Pi 3/4/5 running a 64-bit OS such as Raspberry Pi OS 64-bit).
+
+1. Download the latest `streaming-<version>-linux-arm64.tar.gz` from the
+   [releases page](https://github.com/egbertn/streaming/releases) onto the Pi.
+2. Optionally verify the download with the `.sha256` file:
+
+   ```bash
+   sha256sum -c streaming-*-linux-arm64.tar.gz.sha256
+   ```
+3. Extract and install:
+
+   ```bash
+   tar -xzf streaming-*-linux-arm64.tar.gz
+   cd streaming-*-linux-arm64
+   sudo ./install.sh /opt/streaming "$USER"
+   ```
+
+The installer copies the application to `/opt/streaming` (or the directory you pass as the
+first argument), installs and starts the `kestrel-music` systemd service as the given user,
+and waits for `/health` to respond. Re-running it with a newer release upgrades in place;
+the music collection in `wwwroot/music` and the SQLite database in `data/` are preserved.
+
+After installation, open `http://raspberrypi.local:8080` in a browser on the same network,
+set an API token (see [Access](#access)), and open the firewall ports (see
+[Firewall](#firewall)). If the machine is not reachable as `raspberrypi.local`, override
+`Streaming__PublicBaseUrl` through `sudo systemctl edit kestrel-music`. For the USB-DAC
+broadcast mode, additionally install `ffmpeg` (see
+[USB-DAC broadcast mode](#usb-dac-broadcast-mode)).
 
 ## Professional installation
 
@@ -193,6 +225,19 @@ REF=main ./publish.sh
 
 `publish.sh` only dispatches GitHub Actions; it no longer cross-compiles or deploys from the
 x64 development laptop. The service unit remains managed independently on the Pi.
+
+### Releases
+
+Pushing a tag matching `v*` runs `.github/workflows/release.yml` on the same
+`streaming-build` runner. It runs the tests, publishes the Native AOT executable and
+attaches `streaming-<tag>-linux-arm64.tar.gz` — containing the binary, `appsettings.json`,
+the control page, the systemd unit and `install.sh` — plus a SHA-256 checksum to a GitHub
+release. To cut a release:
+
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
 
 The result is one executable of roughly 47 MB plus `appsettings.json` and the control page.
 Nothing else has to be installed on the Pi: no .NET runtime, no snap, no container. Change
