@@ -58,8 +58,10 @@ curl -fsSL https://nieropcomputervision.com/install-streaming.sh | sudo bash
 sudo systemctl enable --now kestrel-music
 ```
 
-**Website hosting prerequisite:** publish `deploy/install-streaming.sh` at that HTTPS URL
-before advertising the website command. It is also attached to every new release.
+After a successful deployment, the `streaming-prod` runner publishes
+`deploy/install-streaming.sh` to the website's persistent `downloads` directory and
+verifies that the public HTTPS URL returns the exact script. It is also attached to every
+new release.
 Both commands run downloaded code as root; inspect the script first if preferred.
 The script downloads the latest stable GitHub release and verifies its SHA-256 checksum.
 This checks download integrity, not an independent publisher signature.
@@ -273,6 +275,14 @@ REF=main ./publish.sh
 
 `publish.sh` only dispatches GitHub Actions; it no longer cross-compiles or deploys from the
 x64 development laptop. The service unit remains managed independently on the Pi.
+
+The final `publish-installer` job runs on the Pi after successful deployment. It atomically
+replaces `/home/moeder/apps/nieropcomputervision.com/downloads/install-streaming.sh`;
+this directory is outside the website's rotating `current` release directory.
+Nginx serves only `/install-streaming.sh` using `deploy/installer-location.conf`, installed
+as `/etc/nginx/snippets/streaming-installer.conf` and included in the website's HTTPS
+server block. This nginx setup is a one-time operation; regular deployments need no sudo
+or website service restart to publish the script.
 
 ### Releases
 

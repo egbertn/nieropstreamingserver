@@ -125,3 +125,13 @@ jobs:
             echo "Rollback failed; manual intervention is required"
             exit 1
           fi
+
+  publish-installer:
+    needs: deploy
+    runs-on: [self-hosted, Linux, ARM64, streaming-prod]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Publish website installer
+        run: bash deploy/publish-installer.sh
