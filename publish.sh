@@ -7,7 +7,7 @@ command -v gh > /dev/null || {
 }
 
 REF="${REF:-main}"
-REPOSITORY="${REPOSITORY:-egbertn/streaming}"
+REPOSITORY="${REPOSITORY:-egbertn/nieropstreamingserver}"
 
 gh workflow run deploy.yml --repo "$REPOSITORY" --ref "$REF"
 echo "Deployment requested for $REPOSITORY at $REF."

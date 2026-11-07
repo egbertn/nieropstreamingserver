@@ -1,4 +1,6 @@
-# Music streaming for Sonos (or classic Audio Output)
+# Nierop Music Streaming Server
+
+Music streaming for Sonos (or classic Audio Output).
 
 The project is organized as a .NET solution with the application in `src/Streaming`
 and unit tests in `tests/Streaming.Tests`. The music collection under
@@ -34,20 +36,13 @@ wifi, without a streaming subscription and without the licensing and reliability
 that come with a cloud service.
 
 ## Installation
-
-No compiler or .NET SDK needed: every release ships a ready-to-run package for 64-bit ARM
-Linux (Raspberry Pi 3/4/5 running a 64-bit OS such as Raspberry Pi OS 64-bit).
-At least **512 MB RAM** (512,000,000 bytes reported by the OS) and a running systemd
-service manager are required. The installer checks architecture, RAM, available disk
-space, the release's minimum glibc version and native shared libraries before installing.
-Use a recent 64-bit OS; no .NET runtime is required.
-
+Ik
 ### Quick install
 
 Run on the Raspberry Pi:
 
 ```bash
-curl -fsSL https://github.com/egbertn/streaming/releases/latest/download/install-streaming.sh | sudo bash
+curl -fsSL https://github.com/egbertn/nieropstreamingserver/releases/latest/download/install-streaming.sh | sudo bash
 sudo systemctl enable --now kestrel-music
 ```
 
@@ -84,7 +79,7 @@ the internet.
 ### Manual download
 
 1. Download the latest `streaming-<version>-linux-arm64.tar.gz` from the
-   [releases page](https://github.com/egbertn/streaming/releases) onto the Pi.
+   [releases page](https://github.com/egbertn/nieropstreamingserver/releases) onto the Pi.
 2. Optionally verify the download with the `.sha256` file:
 
    ```bash

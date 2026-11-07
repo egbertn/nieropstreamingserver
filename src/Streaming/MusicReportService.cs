@@ -325,7 +325,7 @@ public sealed class MusicReportService (StreamingOptions options): IMusicReportS
             doc.SetCurrentPage(pageIdx);
             var footerY = PdfDocument.PageHeight - PdfDocument.MarginBottom + 10f;
             doc.DrawLine(PdfDocument.MarginLeft, footerY - 6f, PdfDocument.MarginLeft + PdfDocument.ContentWidth, footerY - 6f, PdfDocument.PdfColor.BorderGray, 0.5f);
-            doc.DrawText("Sonos Streaming Server  -  /report", PdfDocument.MarginLeft, footerY, PdfDocument.FontType.Helvetica, 8f, PdfDocument.PdfColor.Gray);
+            doc.DrawText("Nierop Music Streaming Server  -  /report", PdfDocument.MarginLeft, footerY, PdfDocument.FontType.Helvetica, 8f, PdfDocument.PdfColor.Gray);
             var pageText = $"Pagina {pageIdx + 1} van {totalPages}";
             var pageTextWidth = PdfDocument.MeasureTextWidth(pageText, PdfDocument.FontType.Helvetica, 8f);
             doc.DrawText(pageText, PdfDocument.MarginLeft + PdfDocument.ContentWidth - pageTextWidth, footerY, PdfDocument.FontType.Helvetica, 8f, PdfDocument.PdfColor.Gray);
@@ -345,7 +345,7 @@ public sealed class MusicReportService (StreamingOptions options): IMusicReportS
         currentY += 24f;
 
         // Subtitle / Date
-        var generatedText = $"Gegenereerd op {data.GeneratedAtUtc.ToString("dd-MM-yyyy HH:mm:ss", CultureInfo.InvariantCulture)} UTC  -  Sonos Streaming Server";
+        var generatedText = $"Gegenereerd op {data.GeneratedAtUtc.ToString("dd-MM-yyyy HH:mm:ss", CultureInfo.InvariantCulture)} UTC  -  Nierop Music Streaming Server";
         doc.DrawText(generatedText, PdfDocument.MarginLeft, currentY, PdfDocument.FontType.Helvetica, 9f, PdfDocument.PdfColor.Gray);
         currentY += 16f;
 

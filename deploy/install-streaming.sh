@@ -23,7 +23,7 @@ glibc="$(getconf GNU_LIBC_VERSION)" || fail "GNU libc is required; musl/Alpine i
 [[ "$glibc" == glibc\ * ]] || fail "GNU libc is required."
 echo "Detected Linux ARM64, $((memory_bytes / 1000000)) MB RAM, $glibc."
 
-repository=https://github.com/egbertn/streaming
+repository=https://github.com/egbertn/nieropstreamingserver
 release_url="$(curl --proto '=https' --proto-redir '=https' -fsSL \
   --connect-timeout 15 --max-time 60 -o /dev/null -w '%{url_effective}' "$repository/releases/latest")" \
   || fail "No published release is available, or GitHub cannot be reached."

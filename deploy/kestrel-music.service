@@ -1,5 +1,5 @@
 [Unit]
-Description=Sonos MP3 streaming service
+Description=Nierop Music Streaming Server
 After=network-online.target
 Wants=network-online.target
 

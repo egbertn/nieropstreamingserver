@@ -46,7 +46,7 @@ curl() {
     http://localhost:8080/health) [[ "${TEST_HEALTH:-true}" == true ]] ;;
     */releases/latest)
       [[ "${TEST_NO_RELEASE:-false}" == false ]] || return 22
-      echo "https://github.com/egbertn/streaming/releases/tag/v1.2.3"
+      echo "https://github.com/egbertn/nieropstreamingserver/releases/tag/v1.2.3"
       ;;
     *.sha256)
       if [[ "${TEST_BAD_CHECKSUM:-false}" == true ]]; then
