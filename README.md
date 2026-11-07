@@ -41,7 +41,8 @@ and your own music collection, with optional support and updates afterwards. Thi
 aimed at restaurants, salons and shops that want their own music over their own wifi
 without a streaming subscription.
 
-For pricing and availability, contact [nieropcomputervision.com/contact](https://nieropcomputervision.com/contact).
+For pricing and availability, use the contact form at
+[nieropcomputervision.com/contact](https://nieropcomputervision.com/contact).
 
 ## How it works
 
