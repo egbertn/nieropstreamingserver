@@ -272,28 +272,28 @@ public sealed class PdfDocument
 
         void WriteObjEnd()
         {
-            writer.Write(Encoding.ASCII.GetBytes("endobj\n"));
+            writer.Write("endobj\n"u8);
         }
 
         // 1. PDF Header
-        writer.Write(Encoding.ASCII.GetBytes("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"));
+        writer.Write("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"u8);
 
         // Catalog (Obj 1)
         WriteObjHeader(1);
-        writer.Write(Encoding.ASCII.GetBytes("<<\n  /Type /Catalog\n  /Pages 2 0 R\n>>\n"));
+        writer.Write("<<\n  /Type /Catalog\n  /Pages 2 0 R\n>>\n"u8);
         WriteObjEnd();
 
         // Fonts (Objs 3, 4, 5)
         WriteObjHeader(3);
-        writer.Write(Encoding.ASCII.GetBytes("<<\n  /Type /Font\n  /Subtype /Type1\n  /BaseFont /Helvetica\n  /Encoding /WinAnsiEncoding\n>>\n"));
+        writer.Write("<<\n  /Type /Font\n  /Subtype /Type1\n  /BaseFont /Helvetica\n  /Encoding /WinAnsiEncoding\n>>\n"u8);
         WriteObjEnd();
 
         WriteObjHeader(4);
-        writer.Write(Encoding.ASCII.GetBytes("<<\n  /Type /Font\n  /Subtype /Type1\n  /BaseFont /Helvetica-Bold\n  /Encoding /WinAnsiEncoding\n>>\n"));
+        writer.Write("<<\n  /Type /Font\n  /Subtype /Type1\n  /BaseFont /Helvetica-Bold\n  /Encoding /WinAnsiEncoding\n>>\n"u8);
         WriteObjEnd();
 
         WriteObjHeader(5);
-        writer.Write(Encoding.ASCII.GetBytes("<<\n  /Type /Font\n  /Subtype /Type1\n  /BaseFont /Helvetica-Oblique\n  /Encoding /WinAnsiEncoding\n>>\n"));
+        writer.Write("<<\n  /Type /Font\n  /Subtype /Type1\n  /BaseFont /Helvetica-Oblique\n  /Encoding /WinAnsiEncoding\n>>\n"u8);
         WriteObjEnd();
 
         // Pages List & Content streams
@@ -331,7 +331,7 @@ public sealed class PdfDocument
             WriteObjHeader(contentObj);
             writer.Write(Encoding.ASCII.GetBytes($"<<\n  /Length {contentBytes.Length}\n>>\nstream\n"));
             writer.Write(contentBytes);
-            writer.Write(Encoding.ASCII.GetBytes("\nendstream\n"));
+            writer.Write("\nendstream\n"u8);
             WriteObjEnd();
         }
 
