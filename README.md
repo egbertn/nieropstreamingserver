@@ -31,6 +31,18 @@ practical fit for a restaurant, salon or shop that wants to play its own music o
 wifi, without a streaming subscription and without the licensing and reliability questions
 that come with a cloud service.
 
+## Professional installation
+
+The software is free and open source (AGPL-3.0), and you are welcome to set it up
+yourself using the instructions below. If you would rather not deal with Raspberry Pis,
+systemd units and firewall rules, a paid installation service is available: a
+pre-configured device delivered and installed on site, connected to your Sonos speakers
+and your own music collection, with optional support and updates afterwards. This is
+aimed at restaurants, salons and shops that want their own music over their own wifi
+without a streaming subscription.
+
+For pricing and availability, contact [nieropcomputervision.com/contact](https://nieropcomputervision.com/contact).
+
 ## How it works
 
 ```mermaid
@@ -297,3 +309,11 @@ curl -s -o /dev/null -w '%{http_code}\n' -H 'Range: bytes=0-1023' http://<host>:
 
 Expect `200` with `Content-Type: audio/mpeg` and `Accept-Ranges: bytes`, and `206` on the
 range request.
+
+## License
+
+This project is licensed under the [GNU Affero General Public License v3.0](LICENSE)
+(AGPL-3.0-or-later). In short: you may use, modify and redistribute it freely, but if
+you distribute it or offer it as a network service, you must make your source code —
+including your modifications — available under the same license. For commercial
+licensing outside the AGPL terms, contact the author.

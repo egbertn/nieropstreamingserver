@@ -19,7 +19,7 @@ Environment=Smtp__Password=
 Environment=Smtp__Username=
 Environment=Streaming__Playback__UseSonos=true
 Environment=Streaming__Port=8080
-Environment=Streaming__ApiToken=3012
+Environment=Streaming__ApiToken=
 
 # Set Streaming__ApiToken through a systemd override or environment file.
 User=__USER__
