@@ -6,6 +6,7 @@ using Microsoft.Extensions.FileProviders;
 using Streaming;
 
 var builder = WebApplication.CreateBuilder(args);
+LoggingDefaults.Apply(builder.Configuration);
 
 // Computed once at startup so services don't each recompute paths from IConfiguration/IWebHostEnvironment.
 var streamingOptions = StreamingOptions.FromConfiguration(builder.Configuration, builder.Environment);

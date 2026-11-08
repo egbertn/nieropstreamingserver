@@ -395,6 +395,21 @@ Environment=Smtp__Username=reports@example.com
 Environment=Smtp__Password=<password>
 ```
 
+The Sonos HTTP client logs warnings and errors by default, rather than logging
+each periodic status request. To temporarily include the HTTP request details,
+set the following systemd override and restart the service:
+
+```ini
+[Service]
+Environment=Logging__LogLevel__System.Net.Http.HttpClient.SonosService=Trace
+```
+
+These request messages are emitted at `Information` level by .NET; the override
+also enables its more detailed trace messages. Remove the override and restart
+the service to return to the quieter default. Existing `appsettings.json` files
+are preserved during upgrades; an explicitly configured level for this category
+continues to take precedence over the default.
+
 ## Firewall
 
 Two things need to be open on the Pi:
