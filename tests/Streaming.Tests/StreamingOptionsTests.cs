@@ -1,4 +1,3 @@
-using System.Text;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
@@ -10,13 +9,13 @@ public sealed class StreamingOptionsTests
     [Fact]
     public void FromConfiguration_ReadsSonosAddressesFromJsonArray()
     {
-        using var json = new MemoryStream(Encoding.UTF8.GetBytes(
-            """{"Streaming":{"Sonos":{"Addresses":["192.168.1.211","192.168.1.212"],"DiscoveryPort":1901}}}"""));
-        var configuration = CreateConfigurationBuilder().AddJsonStream(json).Build();
+        var json = """{"Streaming":{"Sonos":{"Addresses":["192.168.1.211","192.168.1.212"],"DiscoveryPort":1901}}}"""u8;
+        using var jsonStream = new MemoryStream(json.ToArray());
+        var configuration = CreateConfigurationBuilder().AddJsonStream(jsonStream).Build();
 
         var options = StreamingOptions.FromConfiguration(configuration, new TestEnvironment());
 
-        Assert.Equal(["192.168.1.211", "192.168.1.212"], options.SonosAddresses);
+        Assert.Equal([ "192.168.1.211", "192.168.1.212" ], options.SonosAddresses);
         Assert.Equal(1901, options.SonosDiscoveryPort);
     }
 
@@ -39,8 +38,7 @@ public sealed class StreamingOptionsTests
     [Fact]
     public void FromConfiguration_ScalarOverrideReplacesJsonSonosAddresses()
     {
-        using var json = new MemoryStream(Encoding.UTF8.GetBytes(
-            """{"Streaming":{"Sonos":{"Addresses":["192.168.1.211","192.168.1.212"]}}}"""));
+        using var json = new MemoryStream("""{"Streaming":{"Sonos":{"Addresses":["192.168.1.211","192.168.1.212"]}}}"""u8.ToArray());
         var configuration = CreateConfigurationBuilder()
             .AddJsonStream(json)
             .AddInMemoryCollection(new Dictionary<string, string?>

@@ -25,6 +25,12 @@ public sealed partial class SonosService(HttpClient http, StreamingOptions optio
     private const string AvTransportControlPath = "/MediaRenderer/AVTransport/Control";
     private const string InstanceId = "<InstanceID>0</InstanceID>";
     private const string SsdpMulticastAddress = "239.255.255.250";
+    private static readonly byte[] SsdpSearchPayload = Encoding.ASCII.GetBytes(
+        "M-SEARCH * HTTP/1.1\r\n" +
+        $"HOST: {SsdpMulticastAddress}:1900\r\n" +
+        "MAN: \"ssdp:discover\"\r\n" +
+        "MX: 1\r\n" +
+        "ST: urn:schemas-upnp-org:device:ZonePlayer:1\r\n\r\n");
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(5);
 
     // Known addresses skip SSDP; useful when a firewall blocks the multicast replies.
@@ -175,18 +181,11 @@ public sealed partial class SonosService(HttpClient http, StreamingOptions optio
 
     private async Task<IReadOnlyList<Uri>> SearchAsync(CancellationToken ct)
     {
-        const string request = "M-SEARCH * HTTP/1.1\r\n" +
-                       $"HOST: {SsdpMulticastAddress}:1900\r\n" +
-                               "MAN: \"ssdp:discover\"\r\n" +
-                               "MX: 1\r\n" +
-                               "ST: urn:schemas-upnp-org:device:ZonePlayer:1\r\n\r\n";
-
         using var udp = new UdpClient(AddressFamily.InterNetwork);
         udp.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
         udp.Client.Bind(new IPEndPoint(IPAddress.Any, _discoveryPort));
         logger.LogInformation("SSDP zoekt via {LocalEndpoint} naar {MulticastAddress}:1900; UDP-antwoorden moeten op deze lokale zoekpoort binnenkomen.",
             udp.Client.LocalEndPoint, SsdpMulticastAddress);
-        var payload = Encoding.ASCII.GetBytes(request);
         var target = new IPEndPoint(IPAddress.Parse(SsdpMulticastAddress), 1900);
 
         var locations = new List<Uri>();
@@ -195,7 +194,7 @@ public sealed partial class SonosService(HttpClient http, StreamingOptions optio
 
         // Send several times; UDP multicast is easily lost on wifi.
         for (var i = 0; i < 3; i++)
-            await udp.SendAsync(payload, target, ct);
+            await udp.SendAsync(SsdpSearchPayload, target, ct);
 
         try
         {
