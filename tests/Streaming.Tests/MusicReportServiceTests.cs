@@ -31,6 +31,7 @@ public sealed class MusicReportServiceTests : IDisposable
     private  StreamingOptions CreateStreamingOptions() =>new StreamingOptions()
     {
         MusicRoot = _tempMusicDir,
+        SmtpHost = "smtp.example.com",
         DatabasePath = Path.Combine(_tempMusicDir, "database.db"),
         SmtpPassword = "smtppass",
         SmtpUsername = "smtpuser"

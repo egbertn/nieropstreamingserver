@@ -111,11 +111,11 @@ public sealed class EmailReportServiceTests
             return "%PDF-1.4 mock pdf data %%EOF"u8.ToArray();
         }
     }
-    private static StreamingOptions CreateDummyStreamingOptions(bool noHost = false) =>new ()
+    private static StreamingOptions CreateDummyStreamingOptions(string smtpHost = "smtp.example.com") =>new ()
         {
             MusicRoot = string.Empty,
             DatabasePath = string.Empty,
-            SmtpHost = noHost ? null : "smtp.example.com",
+            SmtpHost = smtpHost,
             SmtpFrom = "sender@example.com",
             SmtpFromName = "Muziek Server",
             SmtpUsername = "smtpuser",
@@ -182,10 +182,12 @@ public sealed class EmailReportServiceTests
         await Assert.ThrowsAsync<ArgumentException>(() => emailService.SendReportAsync("invalid-email-address"));
     }
 
-    [Fact]
-    public async Task SendReportAsync_MissingHostConfig_ThrowsInvalidOperationException()
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    public async Task SendReportAsync_MissingHostConfig_ThrowsInvalidOperationException(string smtpHost)
     {
-        var options = CreateDummyStreamingOptions(noHost: true);
+        var options = CreateDummyStreamingOptions(smtpHost);
 
         var emailService = new EmailReportService(options, new DummyMusicReportService(), NullLogger<EmailReportService>.Instance);
 

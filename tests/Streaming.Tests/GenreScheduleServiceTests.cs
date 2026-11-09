@@ -74,6 +74,7 @@ public sealed class GenreScheduleServiceTests : IDisposable
     private GenreScheduleService CreateService() => new(new StreamingOptions
     {
         MusicRoot = Path.Combine(_directory, "music"),
+        SmtpHost = "smtp.example.com",
         DatabasePath = Path.Combine(_directory, "streaming.db"),
         SchedulePath = Path.Combine(_directory, "schedule.json"),
         SmtpPassword = "smtppass",

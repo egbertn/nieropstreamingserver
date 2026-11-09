@@ -14,6 +14,7 @@ public sealed class AuditStorageTests : IDisposable
         var storage = new AuditStorage(new StreamingOptions
         {
             MusicRoot = _root,
+            SmtpHost = "smtp.example.com",
             DatabasePath = Path.Combine(_root, "data", "streaming.db"),
             SmtpUsername = "smtpuser",
             SmtpPassword = "smtppass"
