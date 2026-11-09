@@ -57,14 +57,7 @@ output such as an analog audio jack or USB audio adapter/DAC are also required.
 
 ### Quick install
 
-Run on the Raspberry Pi:
-
-```bash
-curl -fsSL https://nieropcomputervision.com/install-streaming.sh | sudo bash
-sudo systemctl enable --now kestrel-music
-```
-
-The installer is also attached to new GitHub releases:
+Run on the Raspberry Pi using the latest published GitHub release:
 
 ```bash
 curl -fsSL https://github.com/egbertn/nieropstreamingserver/releases/latest/download/install-streaming.sh | sudo bash
@@ -72,14 +65,11 @@ sudo systemctl enable --now kestrel-music
 ```
 
 The installer attached to release `v1.0.1` still uses the former repository name and
-fails with `Unexpected GitHub release URL`. Until a newer release is published, use the
-website installer above instead.
+fails with `Unexpected GitHub release URL`. Use a newer release instead.
 
-After a successful deployment, the `streaming-prod` runner publishes
-`deploy/install-streaming.sh` to the website's persistent `downloads` directory and
-verifies that the public HTTPS URL returns the exact script. It is also attached to every
-new release.
-Both commands run downloaded code as root; inspect the script first if preferred.
+The installer is attached to each new release. The former website download is no longer
+automatically updated; use the GitHub release URL above.
+The command runs downloaded code as root; inspect the script first if preferred.
 The script downloads the latest stable GitHub release and verifies its SHA-256 checksum.
 This checks download integrity, not an independent publisher signature.
 
@@ -119,8 +109,8 @@ the internet.
 The package installer copies the application to `/opt/streaming` (or the directory you pass as the
 first argument), installs and starts the `kestrel-music` systemd service as the given user,
 and waits for `/health` to respond. Re-running it with a newer release upgrades in place;
-the music collection in `wwwroot/music`, SQLite database in `data/`, existing
-`appsettings.json`, systemd overrides and `/etc/kestrel-music/environment` are preserved.
+the music collection in `wwwroot/music`, SQLite database in `data/`,
+systemd overrides and `/etc/kestrel-music/environment` are preserved.
 
 After installation, open `http://raspberrypi.local:8080` in a browser on the same network,
 enter the generated API token (see [Access](#access)), and open the firewall ports (see
@@ -222,9 +212,29 @@ authenticate. Traffic is plain HTTP, so the token is readable to anyone who can 
 traffic on the network. That is a deliberate trade-off for a home network, in the same vein
 as a router admin page over HTTP.
 
+## Files on the Raspberry Pi
+
+There is no `appsettings.json`; configuration is done with environment variables
+(`Streaming__...`, `Smtp__...`) in `/etc/kestrel-music/environment` or a systemd override.
+
+| What | Location |
+|---|---|
+| Application | `/opt/streaming` |
+| Music | `/opt/streaming/wwwroot/music` |
+| Database, schedule | `/opt/streaming/data` |
+| Secrets and settings | `/etc/kestrel-music/environment` |
+| Service unit | `/etc/systemd/system/kestrel-music.service` |
+
+The package installer accepts a different directory as its first argument; the quick
+installer uses `/opt/streaming`.
+
+The `data` directory holds only the database and schedule; music is never stored there.
+Music and data are kept across upgrades and deployments.
+
 ## Music
 
-MP3s (or m4a/flac/wav/ogg) live in `src/Streaming/wwwroot/music`, subfolders are allowed. Upload them from
+MP3s (or m4a/flac/wav/ogg) live in `wwwroot/music` below the application directory
+(`/opt/streaming/wwwroot/music` with the installer; `src/Streaming/wwwroot/music` in a source checkout), subfolders are allowed. Upload them from
 the control page, or copy them straight onto the Pi with `rsync` or `scp`.
 
 Uploads, including MP3s, are re-encoded as 192 kbit/s MP3 with FFmpeg's single-pass
@@ -285,46 +295,21 @@ Environment=Streaming__Playback__UseSonos=false
 `ffplay` is an external OS dependency and is not included in the Native AOT executable. Set
 `Streaming:Playback:FfplayPath` when it is installed somewhere other than `ffplay` on `PATH`.
 
-## Deploying
+## CI and releases
 
-Every push to `main` runs `.github/workflows/deploy.yml`. The deployment uses two
-repository-scoped ARM64 runners:
+Every branch push runs `.github/workflows/ci.yml` on the `streaming-build` ARM64
+runner on Justin. It runs the installer and .NET tests and verifies a Native AOT publish.
+It does not deploy to a Raspberry Pi or publish a release. The workflow can also be
+started manually with `gh workflow run ci.yml --ref main`.
 
-| Runner | Label | Directory | Responsibility |
-|---|---|---|---|
-| `justin-streaming` | `streaming-build` | `/home/moeder/actions-runner-streaming` on Justin | test and publish Native AOT |
-| `raspberrypi-streaming` | `streaming-prod` | `/home/moeder/actions-runner-streaming` on the Pi | activate, restart, health check and rollback |
-
-These installations and their systemd services are separate from the LinkATap runners.
-The build is copied to `/home/moeder/apps/music.staging`; production remains in
-`/home/moeder/apps/music`. Deployment excludes `wwwroot/music`, so the collection is not
-deleted or copied into rollback snapshots.
-
-The repository variable `DEPLOY_TARGET` contains the SSH target used by the Justin runner.
-To start the same workflow manually from a development machine with an authenticated
-GitHub CLI:
-
-```bash
-./publish.sh
-REF=main ./publish.sh
-```
-
-`publish.sh` only dispatches GitHub Actions; it no longer cross-compiles or deploys from the
-x64 development laptop. The service unit remains managed independently on the Pi.
-
-The final `publish-installer` job runs on the Pi after successful deployment. It atomically
-replaces `/home/moeder/apps/nieropcomputervision.com/downloads/install-streaming.sh`;
-this directory is outside the website's rotating `current` release directory.
-Nginx serves only `/install-streaming.sh` using `deploy/installer-location.conf`, installed
-as `/etc/nginx/snippets/streaming-installer.conf` and included in the website's HTTPS
-server block. This nginx setup is a one-time operation; regular deployments need no sudo
-or website service restart to publish the script.
+The separate quality workflow runs on pushes to `main` and reports coverage to SonarCloud.
+Neither workflow needs a runner on the Raspberry Pi.
 
 ### Releases
 
 Pushing a tag matching `v*` runs `.github/workflows/release.yml` on the same
 `streaming-build` runner. It runs the tests, publishes the Native AOT executable and
-attaches `streaming-<tag>-linux-arm64.tar.gz` — containing the binary, `appsettings.json`,
+attaches `streaming-<tag>-linux-arm64.tar.gz` — containing the binary,
 the control page, systemd unit, `install.sh`, license and minimum glibc version — plus a
 SHA-256 checksum and the standalone `install-streaming.sh` bootstrap script to a GitHub
 release. To cut a release:
@@ -334,15 +319,20 @@ git tag v1.2.3
 git push origin v1.2.3
 ```
 
-The result is one executable of roughly 47 MB plus `appsettings.json` and the control page.
+Tag a commit that has passed CI. The release workflow checks out and tests the tagged
+commit again; on success it publishes the release directly. A tag alone does not ensure
+the commit passed the branch workflow. Protect release tags from being moved or deleted.
+Installation and upgrades on the maintainer's Pi use the same release installer as customers.
+
+The result is one executable of roughly 47 MB plus the control page.
 FFmpeg is required for uploads, but no .NET runtime, snap or container is needed. Change
 `RUNTIME` in the workflow to target a different architecture.
 
 The release project is configured for Native AOT. Publishing produces a stripped native
 executable instead of shipping the managed application assemblies. JSON responses use the
 source-generated `StreamingJsonContext`; reflection-based JSON serialization is disabled.
-The build runs natively on the ARM64 Justin runner and deploys the resulting executable to
-the ARM64 Raspberry Pi.
+The build runs natively on the ARM64 Justin runner; installation on a Raspberry Pi is a
+separate, manual step.
 
 ## Quality checks
 
@@ -422,8 +412,7 @@ Environment=Logging__LogLevel__System.Net.Http.HttpClient.SonosService=Trace
 
 These request messages are emitted at `Information` level by .NET; the override
 also enables its more detailed trace messages. Remove the override and restart
-the service to return to the quieter default. Existing `appsettings.json` files
-are preserved during upgrades; an explicitly configured level for this category
+the service to return to the quieter default. There is no `appsettings.json`; all configuration comes from environment variables. An explicitly configured level for this category
 continues to take precedence over the default.
 
 ## Firewall

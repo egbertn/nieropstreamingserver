@@ -14,7 +14,7 @@ jobs:
       SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
       SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Add local .NET SDK to PATH
         run: |

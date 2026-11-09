@@ -59,7 +59,7 @@ public sealed class EmailReportService(
         var host = _options.SmtpHost;
         if (string.IsNullOrWhiteSpace(host))
         {
-            throw new InvalidOperationException("SMTP-server is niet geconfigureerd in appsettings.json (Streaming:Smtp:Host).");
+            throw new InvalidOperationException("SMTP-server is niet geconfigureerd (omgevingsvariabele Smtp__Host).");
         }
 
         var data = _reportService.CollectReportData();
@@ -96,7 +96,7 @@ public sealed class EmailReportService(
 
         var host = _options.SmtpHost;
         if (string.IsNullOrWhiteSpace(host))
-            throw new InvalidOperationException("SMTP-server is niet geconfigureerd in appsettings.json (Streaming:Smtp:Host).");
+            throw new InvalidOperationException("SMTP-server is niet geconfigureerd (omgevingsvariabele Smtp__Host).");
 
         await using var stream = await _playAuditReportService.GenerateZipAsync(cancellationToken);
         var fromAddress = _options.SmtpFrom;

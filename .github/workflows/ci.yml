@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUNTIME: linux-arm64
+
+jobs:
+  build:
+    runs-on: [self-hosted, Linux, ARM64, streaming-build]
+    env:
+      DOTNET_ROOT: /home/moeder/.dotnet
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Add local .NET SDK to PATH
+        run: echo "$DOTNET_ROOT" >> "$GITHUB_PATH"
+
+      - name: Installer tests
+        run: bash tests/deploy/install-tests.sh
+
+      - name: .NET tests
+        timeout-minutes: 10
+        run: dotnet test Streaming.slnx --configuration Release
+
+      - name: Verify ARM64 Native AOT publish
+        shell: bash
+        run: |
+          output="$RUNNER_TEMP/streaming-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          dotnet publish src/Streaming/streaming.csproj \
+            --configuration Release \
+            --runtime "$RUNTIME" \
+            --self-contained true \
+            --output "$output" \
+            -p:DebugType=none \
+            -p:DebugSymbols=false \
+            -p:SourceRevisionId="$GITHUB_SHA"
+          test -x "$output/streaming"

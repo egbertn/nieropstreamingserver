@@ -145,7 +145,6 @@ sed -e 's/if \[\[ \$EUID -ne 0 \]\]; then/if false; then/' \
   "$repository/deploy/install.sh" > "$test_root/source/install.sh"
 cp "$repository/deploy/kestrel-music.service" "$test_root/source/kestrel-music.service"
 cp "$package/streaming" "$test_root/source/streaming"
-echo '{}' > "$test_root/source/appsettings.json"
 echo new > "$test_root/source/wwwroot/index.html"
 echo excluded > "$test_root/source/wwwroot/music/excluded.mp3"
 id() { if [[ "$1" == -gn ]]; then echo streaming; else return 0; fi; }
@@ -166,14 +165,12 @@ echo "PASS: first install, generated protected token, LAN URL, no service start"
 echo music > "$test_root/opt/streaming/wwwroot/music/existing.mp3"
 echo database > "$test_root/opt/streaming/data/streaming.db"
 echo schedule > "$test_root/opt/streaming/data/schedule.json"
-echo custom > "$test_root/opt/streaming/appsettings.json"
 cp "$test_root/etc/kestrel-music/environment" "$test_root/environment-before"
 env TEST_ACTIVE=true bash "$test_root/source/install.sh" "$test_root/opt/streaming" streaming --no-start \
   > "$test_root/output" 2>&1
 grep -Fxq music "$test_root/opt/streaming/wwwroot/music/existing.mp3"
 grep -Fxq database "$test_root/opt/streaming/data/streaming.db"
 grep -Fxq schedule "$test_root/opt/streaming/data/schedule.json"
-grep -Fxq custom "$test_root/opt/streaming/appsettings.json"
 cmp "$test_root/environment-before" "$test_root/etc/kestrel-music/environment"
 grep -Fxq 'stop kestrel-music' "$test_root/system.log"
 grep -Fxq 'restart kestrel-music' "$test_root/system.log"

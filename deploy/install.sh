@@ -87,9 +87,6 @@ for entry in "$SRC_DIR"/*; do
   base="$(basename "$entry")"
   case "$base" in
     install.sh|kestrel-music.service|glibc-minimum|data) continue ;;
-    appsettings.json)
-      [[ -f "$INSTALL_DIR/appsettings.json" ]] || cp "$entry" "$INSTALL_DIR/"
-      ;;
     wwwroot)
       mkdir -p "$INSTALL_DIR/wwwroot"
       for asset in "$entry"/*; do
