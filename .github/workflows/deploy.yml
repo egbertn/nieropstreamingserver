@@ -28,7 +28,7 @@ jobs:
       STAGING_DIR: /home/moeder/apps/music.staging
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Add local .NET SDK to PATH
         run: echo "$DOTNET_ROOT" >> "$GITHUB_PATH"
@@ -134,7 +134,7 @@ jobs:
     runs-on: [self-hosted, Linux, ARM64, streaming-prod]
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Publish website installer
         run: bash deploy/publish-installer.sh
