@@ -291,17 +291,31 @@ public sealed partial class SonosService(HttpClient http, StreamingOptions optio
             Content = new StringContent(envelope, Encoding.UTF8, "text/xml")
         };
         request.Headers.TryAddWithoutValidation("SOAPACTION", $"\"{service}#{action}\"");
-
-        using var response = await http.SendAsync(request, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
-        if (!response.IsSuccessStatusCode)
+        try
         {
-            var code = int.TryParse(MyRegex1().Match(body).Groups["c"].Value, out var parsed) ? parsed : 0;
-            logger.LogWarning("Sonos {Action} gaf {Status}: {Body}", action, (int)response.StatusCode, body);
-            throw new SonosException(action, code, Describe(code));
+            using var response = await http.SendAsync(request, ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                var code = int.TryParse(MyRegex1().Match(body).Groups["c"].Value, out var parsed) ? parsed : 0;
+                logger.LogWarning("Sonos {Action} gaf {Status}: {Body}", action, (int)response.StatusCode, body);
+                throw new SonosException(action, code, Describe(code));
+            }
+            return body;
+        }
+        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Sonos {Action} timed out", action);
+            throw new SonosException(action, 0, "Timeout");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Sonos {Action} failed", action);
+            throw new SonosException(action, 0, "Unknown error");
         }
 
-        return body;
+
+
     }
 
     internal static string Describe(int errorCode) => errorCode switch
