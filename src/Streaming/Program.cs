@@ -30,6 +30,8 @@ services.AddSingleton<IEmailReportService, EmailReportService>();
 services.AddSingleton<IRandomSource, SharedRandomSource>();
 services.AddSingleton<IBroadcastPlaybackService, BroadcastPlaybackService>();
 services.AddSingleton<IGenreScheduleService, GenreScheduleService>();
+services.AddSingleton<PlaybackCoordinator>();
+services.AddHostedService(sp => sp.GetRequiredService<PlaybackCoordinator>());
 services.AddHostedService<PlaybackAuditWorker>();
 services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.TypeInfoResolverChain.Insert(0, StreamingJsonContext.Default));
@@ -107,13 +109,7 @@ app.Use(async (context, next) =>
 string[] audioExtensions = [".mp3", ".m4a", ".flac", ".wav", ".ogg"];
 string[] uploadExtensions = [".mp3", ".m4a", ".flac", ".wav", ".ogg", ".mp4", ".wmv"];
 
-IEnumerable<string> EnumerateTracks() =>
-    Directory.Exists(musicRoot)
-        ? Directory.EnumerateFiles(musicRoot, "*", SearchOption.AllDirectories)
-            .Where(f => audioExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
-            .Select(f => Path.GetRelativePath(musicRoot, f).Replace(Path.DirectorySeparatorChar, '/'))
-            .Order(StringComparer.OrdinalIgnoreCase)
-        : [];
+IEnumerable<string> EnumerateTracks() => PlaybackCoordinator.EnumerateTracks(musicRoot);
 
 string UrlFor(HttpRequest request, string relativePath)
 {
@@ -589,94 +585,116 @@ bool UseSonosPlayback() => app.Configuration.GetValue("Streaming:Playback:UseSon
 app.MapGet("/api/speakers", (SonosService sonos, bool refresh = false) =>
     UseSonosPlayback() ? sonos.DiscoverAsync(refresh) : Task.FromResult<IReadOnlyList<SonosSpeaker>>([new SonosSpeaker("USB-audio/DAC", "local", "broadcast")]));
 
-app.MapGet("/api/state", async (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker) =>
+app.MapGet("/api/state", async (SonosService sonos, IBroadcastPlaybackService broadcast, PlaybackCoordinator coordinator, HttpRequest request, string? speaker) =>
 {
     if (!UseSonosPlayback())
     {
-        var broadcastState = broadcast.GetState();
-        return Results.Ok(new StateResponse("USB-audio/DAC", broadcastState.State, broadcastState.Title, broadcastState.ElapsedSeconds, broadcastState.DurationSeconds));
+        return Results.Ok(await coordinator.GetStateAsync(null, () =>
+        {
+            var state = broadcast.GetState();
+            return Task.FromResult(new StateResponse("USB-audio/DAC", state.State, state.Title, state.ElapsedSeconds, state.DurationSeconds));
+        }, request.HttpContext.RequestAborted));
     }
 
     var target = await sonos.ResolveAsync(speaker);
     if (target is null)
         return Results.NotFound(new ErrorResponse(L(request, "Geen speaker gevonden", "No speaker found")));
 
-    var state = await sonos.GetTransportStateAsync(target);
-    var position = await sonos.GetPositionInfoAsync(target);
-    return Results.Ok(new StateResponse(
-        target.Name,
-        state,
-        position?.Title,
-        position?.Elapsed.TotalSeconds,
-        position?.Duration.TotalSeconds));
+    var ct = request.HttpContext.RequestAborted;
+    return Results.Ok(await coordinator.GetStateAsync(target, async () =>
+    {
+        var state = await sonos.GetTransportStateAsync(target, ct);
+        var position = await sonos.GetPositionInfoAsync(target, ct);
+        return new StateResponse(target.Name, state, position?.Title, position?.Elapsed.TotalSeconds, position?.Duration.TotalSeconds);
+    }, ct));
 });
 
-app.MapPost("/api/play", async (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker, bool shuffle = false) =>
+app.MapPost("/api/play", async (SonosService sonos, PlaybackCoordinator coordinator, HttpRequest request, string? speaker, string? mode, bool shuffle = false) =>
 {
-    var schedule = request.HttpContext.RequestServices.GetRequiredService<IGenreScheduleService>();
-    var (tracks, filteredBySchedule) = await EnumeratePlayableTracksAsync(schedule, request.HttpContext.RequestAborted);
-    if (tracks.Length == 0)
-        return Results.BadRequest(new ErrorResponse(filteredBySchedule
-            ? L(request, "Geen muziek gevonden voor huidig schema", "No music found for the current schedule")
-            : L(request, "Geen muziek gevonden", "No music found")));
+    if (mode is not null and not ("all" or "schedule"))
+        return Results.BadRequest(new ErrorResponse(L(request, "Ongeldige afspeelmodus", "Invalid playback mode")));
+    return await StartPlaybackAsync(sonos, coordinator, request, speaker, EnumerateTracks().ToArray(), shuffle, mode == "schedule");
+});
 
-    if (!UseSonosPlayback())
-    {
-        await broadcast.StartAsync(tracks, shuffle, request.HttpContext.RequestAborted);
-        return Results.Ok(new PlayResponse("USB-audio/DAC", tracks.Length));
-    }
+app.MapPost("/api/play/selection", async (PlaySelectionRequest selection, SonosService sonos, PlaybackCoordinator coordinator, HttpRequest request, string? speaker, bool shuffle = false) =>
+{
+    var available = EnumerateTracks().ToHashSet(StringComparer.Ordinal);
+    if (selection.Paths is null || selection.Paths.Count == 0 || selection.Paths.Any(path => path is null || !available.Contains(path)) || selection.Paths.Distinct(StringComparer.Ordinal).Count() != selection.Paths.Count)
+        return Results.BadRequest(new ErrorResponse(L(request, "De selectie is leeg of bevat ongeldige nummers; vernieuw de lijst", "The selection is empty or contains invalid tracks; refresh the list")));
+    return await StartPlaybackAsync(sonos, coordinator, request, speaker, selection.Paths.ToArray(), shuffle, false);
+}).WithSummary("Play the selected tracks, ignoring the schedule");
 
-    var target = await sonos.ResolveAsync(speaker);
-    if (target is null)
+async Task<IResult> StartPlaybackAsync(SonosService sonos, PlaybackCoordinator coordinator, HttpRequest request, string? speaker, string[] tracks, bool shuffle, bool useSchedule)
+{
+    if (!useSchedule && tracks.Length == 0)
+        return Results.BadRequest(new ErrorResponse(L(request, "Geen muziek gevonden", "No music found")));
+    var ct = request.HttpContext.RequestAborted;
+    var target = UseSonosPlayback() ? await sonos.ResolveAsync(speaker, ct) : null;
+    if (UseSonosPlayback() && target is null)
         return Results.NotFound(new ErrorResponse(L(request, "Geen speaker gevonden", "No speaker found")));
-
+    var baseUrl = Uri.TryCreate(streamingOptions.PublicBaseUrl, UriKind.Absolute, out _)
+        ? streamingOptions.PublicBaseUrl.TrimEnd('/')
+        : $"{request.Scheme}://{request.Host}";
     try
     {
-        // The files on the server are the playlist; the queue is rebuilt from them every time.
-        await sonos.ClearQueueAsync(target);
-        foreach (var t in tracks)
-            await sonos.QueueUriAsync(target, UrlFor(request, t), Path.GetFileNameWithoutExtension(t));
-
-        await sonos.SelectQueueAsync(target);
-        await sonos.SetPlayModeAsync(target, shuffle ? "SHUFFLE" : "REPEAT_ALL");
-        await sonos.PlayAsync(target);
-        return Results.Ok(new PlayResponse(target.Name, tracks.Length));
+        var count = await coordinator.StartAsync(target, tracks, shuffle, useSchedule, baseUrl, ct);
+        return Results.Ok(new PlayResponse(target?.Name ?? "USB-audio/DAC", count));
     }
     catch (SonosException ex)
     {
-        return Results.Json(
-            new SonosErrorResponse(ex.Message, ex.ErrorCode),
-            StreamingJsonContext.Default.SonosErrorResponse,
-            statusCode: StatusCodes.Status409Conflict);
+        return Results.Json(new SonosErrorResponse(ex.Message, ex.ErrorCode), StreamingJsonContext.Default.SonosErrorResponse, statusCode: StatusCodes.Status409Conflict);
     }
-});
-
-async Task<(string[] Tracks, bool FilteredBySchedule)> EnumeratePlayableTracksAsync(IGenreScheduleService schedule, CancellationToken cancellationToken)
-{
-    var tracks = EnumerateTracks().ToArray();
-    var activeGenres = await schedule.GetActiveGenresAsync(DateTimeOffset.Now, cancellationToken);
-    if (activeGenres is null)
-        return (tracks, false);
-
-    var effectiveGenres = await auditStorage.GetEffectiveGenresAsync(cancellationToken);
-    return (tracks.Where(t => GenreScheduleService.TrackMatchesGenres(effectiveGenres.GetValueOrDefault(t, "onbekend"), activeGenres)).ToArray(), true);
 }
 
-app.MapPost("/api/pause", (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker) => PlaybackCommand(sonos, broadcast, request, speaker, s => sonos.PauseAsync(s), b => b.PauseAsync()));
-app.MapPost("/api/stop", (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker) => PlaybackCommand(sonos, broadcast, request, speaker, s => sonos.StopAsync(s), b => b.StopAsync()));
-app.MapPost("/api/next", (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker) => PlaybackCommand(sonos, broadcast, request, speaker, s => sonos.NextAsync(s), b => b.NextAsync()));
-app.MapPost("/api/previous", (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker) => PlaybackCommand(sonos, broadcast, request, speaker, s => sonos.PreviousAsync(s), b => b.PreviousAsync()));
+app.MapPost("/api/pause", (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker) => PlaybackCommand(sonos, broadcast, request, speaker, s => sonos.PauseAsync(s), b => b.PauseAsync(), pause: true));
+app.MapPost("/api/stop", (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker) => PlaybackCommand(sonos, broadcast, request, speaker, s => sonos.StopAsync(s), b => b.StopAsync(), true));
+app.MapPost("/api/next", (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker) => NavigationCommand(sonos, broadcast, request, speaker, s => sonos.NextAsync(s), b => b.NextAsync()));
+app.MapPost("/api/previous", (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker) => NavigationCommand(sonos, broadcast, request, speaker, s => sonos.PreviousAsync(s), b => b.PreviousAsync()));
 app.MapPost("/api/volume", (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, int level, string? speaker) => PlaybackCommand(sonos, broadcast, request, speaker, s => sonos.SetVolumeAsync(s, level), b => { b.SetVolume(level); return Task.CompletedTask; }));
 
-async Task<IResult> PlaybackCommand(SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker, Func<SonosSpeaker, Task> sonosAction, Func<IBroadcastPlaybackService, Task> broadcastAction)
+async Task<IResult> NavigationCommand(SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker, Func<SonosSpeaker, Task> sonosAction, Func<IBroadcastPlaybackService, Task> broadcastAction)
 {
+    var ct = request.HttpContext.RequestAborted;
+    var coordinator = request.HttpContext.RequestServices.GetRequiredService<PlaybackCoordinator>();
+    var target = UseSonosPlayback() ? await sonos.ResolveAsync(speaker, ct) : null;
+    if (UseSonosPlayback() && target is null)
+        return Results.NotFound(new ErrorResponse(L(request, "Geen speaker gevonden", "No speaker found")));
+    try
+    {
+        var executed = await coordinator.NavigateAsync(target, () => target is null ? broadcastAction(broadcast) : sonosAction(target), ct);
+        return executed
+            ? Results.Ok(new SpeakerResponse(target?.Name ?? "USB-audio/DAC"))
+            : Results.Conflict(new ErrorResponse(L(request, "Het schema wacht of is gepauzeerd", "The schedule is waiting or paused")));
+    }
+    catch (SonosException ex)
+    {
+        return Results.Json(new SonosErrorResponse(ex.Message, ex.ErrorCode), StreamingJsonContext.Default.SonosErrorResponse, statusCode: StatusCodes.Status409Conflict);
+    }
+}
+
+async Task<IResult> PlaybackCommand(SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker, Func<SonosSpeaker, Task> sonosAction, Func<IBroadcastPlaybackService, Task> broadcastAction, bool cancelSchedule = false, bool pause = false)
+{
+    var coordinator = request.HttpContext.RequestServices.GetRequiredService<PlaybackCoordinator>();
     if (!UseSonosPlayback())
     {
-        await broadcastAction(broadcast);
+        if (pause)
+            await coordinator.PauseAsync(null, () => broadcastAction(broadcast), request.HttpContext.RequestAborted);
+        else if (cancelSchedule)
+            await coordinator.CancelScheduleAndExecuteAsync(null, () => broadcastAction(broadcast), request.HttpContext.RequestAborted);
+        else
+            await broadcastAction(broadcast);
         return Results.Ok(new SpeakerResponse("USB-audio/DAC"));
     }
 
-    return await Command(sonos, request, speaker, sonosAction);
+    return await Command(sonos, request, speaker, async target =>
+    {
+        if (pause)
+            await coordinator.PauseAsync(target, () => sonosAction(target), request.HttpContext.RequestAborted);
+        else if (cancelSchedule)
+            await coordinator.CancelScheduleAndExecuteAsync(target, () => sonosAction(target), request.HttpContext.RequestAborted);
+        else
+            await sonosAction(target);
+    });
 }
 
 async Task<IResult> Command(SonosService sonos, HttpRequest request, string? speaker, Func<SonosSpeaker, Task> action)

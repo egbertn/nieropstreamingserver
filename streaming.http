@@ -5,6 +5,23 @@ Accept: application/json
 
 ###
 
+POST {{streaming_HostAddress}}/api/play?mode=all&shuffle=false
+
+###
+
+POST {{streaming_HostAddress}}/api/play?mode=schedule
+
+###
+
+POST {{streaming_HostAddress}}/api/play/selection?shuffle=true
+Content-Type: application/json
+
+{
+  "paths": ["example.mp3"]
+}
+
+###
+
 GET {{streaming_HostAddress}}/playlist.m3u
 
 ###

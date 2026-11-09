@@ -35,9 +35,14 @@ public sealed record StateResponse(
     string State,
     string? Title,
     double? Elapsed,
-    double? Duration);
+    double? Duration,
+    bool WaitingForSchedule = false,
+    bool SchedulePaused = false);
 
 public sealed record PlayResponse(string Speaker, int Tracks);
+
+/// <summary>Tracks selected from the current search results.</summary>
+public sealed record PlaySelectionRequest(IReadOnlyList<string> Paths);
 
 public sealed record SpeakerResponse(string Speaker);
 
@@ -67,6 +72,7 @@ public sealed record ScheduleSaveRequest(IReadOnlyList<ScheduleRuleResponse> Rul
 [JsonSerializable(typeof(HealthResponse))]
 [JsonSerializable(typeof(StateResponse))]
 [JsonSerializable(typeof(PlayResponse))]
+[JsonSerializable(typeof(PlaySelectionRequest))]
 [JsonSerializable(typeof(SpeakerResponse))]
 [JsonSerializable(typeof(EmailReportRequest))]
 [JsonSerializable(typeof(EmailReportResponse))]

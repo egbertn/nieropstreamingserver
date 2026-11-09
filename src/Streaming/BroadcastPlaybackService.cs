@@ -77,9 +77,6 @@ public sealed class BroadcastPlaybackService(StreamingOptions options, ILogger<B
     {
         lock (_sync)
         {
-            if (_player is null)
-                return Task.CompletedTask;
-
             if (_state == "PLAYING")
             {
                 _elapsedBeforePause = GetElapsed();
@@ -161,19 +158,31 @@ public sealed class BroadcastPlaybackService(StreamingOptions options, ILogger<B
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            string relativePath;
-            int volume;
-            TimeSpan startOffset;
+            string relativePath = "";
+            int volume = 0;
+            TimeSpan startOffset = TimeSpan.Zero;
+            Task? pendingResume = null;
             lock (_sync)
             {
                 if (_queue.Length == 0)
                     return;
-                relativePath = _queue[_currentIndex];
-                volume = _volume;
-                startOffset = _elapsedBeforePause;
-                _trackStartedUtc = DateTime.UtcNow - startOffset;
-                _elapsedBeforePause = TimeSpan.Zero;
-                _state = "PLAYING";
+                if (_state == "PAUSED_PLAYBACK")
+                    pendingResume = _resumeSignal?.Task;
+                else
+                {
+                    relativePath = _queue[_currentIndex];
+                    volume = _volume;
+                    startOffset = _elapsedBeforePause;
+                    _trackStartedUtc = DateTime.UtcNow - startOffset;
+                    _elapsedBeforePause = TimeSpan.Zero;
+                    _state = "PLAYING";
+                }
+            }
+
+            if (pendingResume is not null)
+            {
+                await pendingResume.WaitAsync(cancellationToken);
+                continue;
             }
 
             var fullPath = Path.GetFullPath(Path.Combine(options.MusicRoot, relativePath));
@@ -193,7 +202,11 @@ public sealed class BroadcastPlaybackService(StreamingOptions options, ILogger<B
                 }) ?? throw new InvalidOperationException($"Lokale audiospeler '{options.FfplayPath}' kon niet worden gestart.");
 
                 lock (_sync)
+                {
                     _player = player;
+                    if (cancellationToken.IsCancellationRequested || _state == "PAUSED_PLAYBACK")
+                        TryStopPlayer();
+                }
                 var errorReader = DrainPlayerErrorsAsync(player, relativePath);
                 try
                 {

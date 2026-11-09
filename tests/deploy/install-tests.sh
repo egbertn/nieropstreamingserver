@@ -8,7 +8,7 @@ trap 'echo "Test failed at line $LINENO" >&2; if [[ -f "$test_root/output" ]]; t
 export TEST_ROOT="$test_root"
 mkdir -p "$test_root/run/systemd/system" "$test_root/fixture/streaming-v1.2.3-linux-arm64"
 package="$test_root/fixture/streaming-v1.2.3-linux-arm64"
-printf '#!/bin/bash\nprintf "%%s\\n" "$*" > "$TEST_ROOT/invocation"\nmkdir -p "$TEST_ROOT/etc/nierop-music"\nprintf "Streaming__ApiToken=%%048d\\n" 0 > "$TEST_ROOT/etc/nierop-music/environment"\n' > "$package/install.sh"
+printf '#!/bin/bash\nprintf "%%s\\n" "$*" > "$TEST_ROOT/invocation"\nmkdir -p "$TEST_ROOT/etc/nierop-music"\nif [[ ! -f "$TEST_ROOT/etc/nierop-music/environment" ]]; then\n  printf "Streaming__ApiToken=%%048d\\n" 0 > "$TEST_ROOT/etc/nierop-music/environment"\nfi\n' > "$package/install.sh"
 printf '#!/bin/bash\nexit 0\n' > "$package/streaming"
 chmod +x "$package/streaming"
 echo 2.36 > "$package/glibc-minimum"
@@ -113,21 +113,32 @@ mkdir "$test_root/run/systemd/system"
 bash "$test_root/bootstrap.sh" > "$test_root/output" 2>&1
 grep -Fxq '/opt/streaming streaming --no-start' "$test_root/invocation"
 grep -Fxq 'Streaming__Playback__UseSonos=true' "$test_root/etc/nierop-music/environment"
+grep -Fxq 'Streaming__Sonos__DiscoveryPort=1901' "$test_root/etc/nierop-music/environment"
 echo "PASS: exactly 512 MB, verified download and no-start installation"
 
+sed -i '/^Streaming__Sonos__DiscoveryPort=/d' "$test_root/etc/nierop-music/environment"
 echo 2 > "$test_root/tty"
 env TEST_FFPLAY=false bash "$test_root/bootstrap.sh" > "$test_root/output" 2>&1
 grep -Fxq 'apt-get update' "$test_root/apt.log"
 grep -Fxq 'apt-get install -y ffmpeg' "$test_root/apt.log"
 grep -Fxq 'Streaming__Playback__UseSonos=false' "$test_root/etc/nierop-music/environment"
+! grep -q '^Streaming__Sonos__DiscoveryPort=' "$test_root/etc/nierop-music/environment"
 grep -q '^Streaming__ApiToken=[a-f0-9]\{48\}$' "$test_root/etc/nierop-music/environment"
 echo "PASS: ALSA selection installs ffmpeg when ffplay is missing and preserves environment"
 
+printf 'Streaming__Sonos__DiscoveryPort=0\n' >> "$test_root/etc/nierop-music/environment"
 echo 1 > "$test_root/tty"
 env TEST_FFPLAY=false bash "$test_root/bootstrap.sh" > "$test_root/output" 2>&1
 grep -Fxq 'Streaming__Playback__UseSonos=true' "$test_root/etc/nierop-music/environment"
+grep -Fxq 'Streaming__Sonos__DiscoveryPort=0' "$test_root/etc/nierop-music/environment"
+[[ "$(grep -c '^Streaming__Sonos__DiscoveryPort=' "$test_root/etc/nierop-music/environment")" == 1 ]]
 [[ "$(wc -l < "$test_root/apt.log")" == 2 ]]
-echo "PASS: Sonos selection restores Sonos mode without installing ffmpeg"
+echo "PASS: Sonos selection preserves configured discovery port without installing ffmpeg"
+
+sed -i '/^Streaming__Sonos__DiscoveryPort=/d' "$test_root/etc/nierop-music/environment"
+env TEST_FFPLAY=false bash "$test_root/bootstrap.sh" > "$test_root/output" 2>&1
+grep -Fxq 'Streaming__Sonos__DiscoveryPort=1901' "$test_root/etc/nierop-music/environment"
+echo "PASS: Sonos upgrade adds missing discovery port"
 
 rm -f "$test_root/apt.log"
 env TEST_FFMPEG=false bash "$test_root/bootstrap.sh" > "$test_root/output" 2>&1

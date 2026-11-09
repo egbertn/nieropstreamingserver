@@ -5,13 +5,13 @@ public sealed class GenreScheduleServiceTests : IDisposable
     private readonly string _directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
 
     [Fact]
-    public async Task GetActiveGenres_NoRules_ReturnsNullSoAllTracksCanPlay()
+    public async Task GetActiveGenres_NoRules_ReturnsEmptySoNothingPlays()
     {
         var service = CreateService();
 
         var genres = await service.GetActiveGenresAsync(new DateTimeOffset(2026, 9, 14, 12, 0, 0, TimeSpan.Zero));
 
-        Assert.Null(genres);
+        Assert.Empty(genres);
     }
 
     [Fact]
@@ -30,7 +30,7 @@ public sealed class GenreScheduleServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task GetActiveGenres_OutsideMatchingRule_ReturnsNullSoAllTracksCanPlay()
+    public async Task GetActiveGenres_OutsideMatchingRule_ReturnsEmptySoNothingPlays()
     {
         var service = CreateService();
         await service.SaveAsync(new ScheduleSaveRequest([
@@ -39,7 +39,7 @@ public sealed class GenreScheduleServiceTests : IDisposable
 
         var genres = await service.GetActiveGenresAsync(new DateTimeOffset(2026, 9, 14, 18, 0, 0, TimeSpan.Zero));
 
-        Assert.Null(genres);
+        Assert.Empty(genres);
     }
 
     [Fact]
@@ -55,7 +55,7 @@ public sealed class GenreScheduleServiceTests : IDisposable
 
         Assert.NotNull(christmas);
         Assert.Contains("Klassiek", christmas);
-        Assert.Null(otherDay);
+        Assert.Empty(otherDay);
     }
 
     [Fact]

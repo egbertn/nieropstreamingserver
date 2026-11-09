@@ -6,7 +6,7 @@ public interface IGenreScheduleService
 {
     Task<ScheduleResponse> LoadAsync(CancellationToken cancellationToken = default);
     Task SaveAsync(ScheduleSaveRequest request, CancellationToken cancellationToken = default);
-    Task<IReadOnlySet<string>?> GetActiveGenresAsync(DateTimeOffset now, CancellationToken cancellationToken = default);
+    Task<IReadOnlySet<string>> GetActiveGenresAsync(DateTimeOffset now, CancellationToken cancellationToken = default);
 }
 
 public sealed class GenreScheduleService(StreamingOptions options) : IGenreScheduleService
@@ -32,12 +32,9 @@ public sealed class GenreScheduleService(StreamingOptions options) : IGenreSched
         File.Move(tempPath, options.SchedulePath, overwrite: true);
     }
 
-    public async Task<IReadOnlySet<string>?> GetActiveGenresAsync(DateTimeOffset now, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlySet<string>> GetActiveGenresAsync(DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         var schedule = await LoadAsync(cancellationToken);
-        if (schedule.Rules.Count == 0)
-            return null;
-
         HashSet<string> activeGenres = new(StringComparer.OrdinalIgnoreCase);
         foreach (var rule in schedule.Rules)
         {
@@ -48,7 +45,7 @@ public sealed class GenreScheduleService(StreamingOptions options) : IGenreSched
                 activeGenres.Add(genre);
         }
 
-        return activeGenres.Count == 0 ? null : activeGenres;
+        return activeGenres;
     }
 
     internal static bool IsActive(ScheduleRuleResponse rule, DateTimeOffset now)

@@ -104,6 +104,9 @@ if grep -q '^Streaming__Playback__UseSonos=' "$environment_file"; then
 else
   printf 'Streaming__Playback__UseSonos=%s\n' "$use_sonos" >> "$environment_file"
 fi
+if [[ "$use_sonos" == true ]] && ! grep -q '^Streaming__Sonos__DiscoveryPort=' "$environment_file"; then
+  printf 'Streaming__Sonos__DiscoveryPort=1901\n' >> "$environment_file"
+fi
 echo
 echo "Installation complete. Start the service:"
 if [[ "$use_sonos" == false ]]; then

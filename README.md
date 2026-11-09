@@ -94,8 +94,10 @@ The installer asks whether to use Sonos or local ALSA audio, installs the applic
 not start a new installation until you run the second command. On upgrades it stops the
 running service before copying files and restarts it afterwards. Music, the database,
 schedule, systemd overrides and `/etc/nierop-music/environment` are preserved; the audio
-output selection updates `Streaming__Playback__UseSonos`. If you change the audio output
-on an upgrade, run `sudo systemctl restart nierop-music` to apply the new selection.
+output selection updates `Streaming__Playback__UseSonos`. When Sonos is selected, the installer adds
+`Streaming__Sonos__DiscoveryPort=1901` if it is not already set, preserving an existing
+choice. On an upgrade, run `sudo systemctl restart nierop-music` to apply the installer
+settings.
 The `.local` address requires mDNS on the Pi and client. If it does not resolve, use the
 Pi's LAN IP in the browser and update `Streaming__PublicBaseUrl` in the environment file
 to that same LAN address, then restart `nierop-music`. Do not expose this HTTP service to
@@ -166,12 +168,14 @@ speaker. See [USB-DAC broadcast mode](#usb-dac-broadcast-mode) for setup instruc
 | `GET /health` | status and number of tracks found |
 | `GET /api/speakers` | discovered speakers (`?refresh=true` forces a new search) |
 | `GET /api/state` | `PLAYING`, `PAUSED_PLAYBACK` or `STOPPED` |
-| `POST /api/play` | queues every file on the server and starts. `?shuffle=true` for random order |
+| `POST /api/play?mode=all` | plays all tracks without the schedule (also the default when `mode` is omitted) |
+| `POST /api/play?mode=schedule` | follows the genre schedule, waiting silently outside scheduled times |
+| `POST /api/play/selection` | plays the supplied `{"paths":["relative/path.mp3"]}` without the schedule |
 | `POST /api/pause`, `/api/stop`, `/api/next`, `/api/previous` | transport control |
 | `POST /api/volume?level=0..100` | volume |
 
 All control endpoints optionally accept `?speaker=<name or ip>`. Without that parameter the
-first speaker found is used.
+first speaker found is used. Both play endpoints accept `?shuffle=true` for random order.
 
 ## Access
 
@@ -232,9 +236,21 @@ added instead. The upload result reports unsupported, copyright-flagged and fail
 separately. Conversion temporarily uses disk space for both input and output and runs one
 file at a time, with a 10-minute conversion timeout.
 
+The dashboard displays ten tracks per page and filters by name and genre. Play selection
+uses **all** matching results, not just the current page; with no search terms it selects
+the whole collection. Choose all tracks without a schedule, the schedule, or the selection
+before pressing Start. Shuffle is optional in each mode and the resulting queue repeats.
+
+Schedule mode checks the rules and effective track genres every five seconds. It stops
+outside active windows or when no tracks match, and resumes automatically when tracks
+become eligible. An empty schedule therefore plays nothing. Pausing suspends schedule
+playback; pressing Pause again resumes according to the current schedule. Stop cancels
+schedule mode, as does starting another mode. Schedule monitoring runs in the server
+process and must be started again after a server restart. Sonos playback cannot be
+controlled by the schedule while the server is offline.
+
 The collection is read from disk on every request, so new files are available immediately
-without a restart. The files on the server together form the playlist; on `POST /api/play`
-the speaker queue is rebuilt from them and set to repeat, so the music keeps going.
+without a restart. Starting playback rebuilds the speaker queue.
 
 ## Audit and evidence
 
@@ -363,7 +379,7 @@ journalctl -u nierop-music -f
 | `Streaming:Playback:UseSonos` | `true` | `true` controls Sonos; `false` plays locally via `ffplay` to the default USB-DAC/ALSA output and audits as `Broadcast` |
 | `Streaming:Playback:FfplayPath` | `ffplay` | command or absolute path for the local broadcast audio player |
 | `Streaming:Sonos:Addresses` | empty | JSON array or comma-separated speaker IPs; skips SSDP when a configured speaker responds |
-| `Streaming:Sonos:DiscoveryPort` | 0 | fixed UDP source port for SSDP; set it when you need to open a specific firewall port |
+| `Streaming:Sonos:DiscoveryPort` | 0 (installer: 1901) | fixed UDP source port for SSDP; set it when you need to open a specific firewall port |
 | `Smtp:Host` | empty | SMTP server used for emailing reports; email endpoints fail when it is not configured |
 | `Smtp:Port` | 587 | SMTP server port |
 | `Smtp:Username` | empty | optional SMTP username |
@@ -410,8 +426,8 @@ sudo ufw allow from 192.168.1.0/24 to any port 8080 proto tcp   # speaker fetche
 sudo ufw allow from 192.168.1.0/24 to any port 1901 proto udp   # SSDP replies
 ```
 
-The UDP rule must match `Streaming:Sonos:DiscoveryPort` (1901 in the shipped
-configuration). A value of 0 uses a dynamically assigned port, so opening 1901 alone
+The UDP rule must match `Streaming:Sonos:DiscoveryPort` (1901 by default in the
+installer). A value of 0 uses a dynamically assigned port, so opening 1901 alone
 will not help. SSDP requests go to multicast address `239.255.255.250:1900`, but
 unicast replies return to the service's source port, not necessarily 1900.
 If outgoing traffic is restricted, also allow UDP to `239.255.255.250:1900`
