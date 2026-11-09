@@ -86,12 +86,15 @@ if [[ "$dependencies" == *"not found"* ]]; then
 $dependencies"
 fi
 
-if [[ "$use_sonos" == false ]] && ! command -v ffplay > /dev/null; then
-  command -v apt-get > /dev/null || fail "ffplay is required for local ALSA playback, but apt-get is not available to install it."
-  echo "ffplay was not found. Installing ffmpeg (which provides ffplay) with apt-get..."
+if ! command -v ffmpeg > /dev/null || { [[ "$use_sonos" == false ]] && ! command -v ffplay > /dev/null; }; then
+  command -v apt-get > /dev/null || fail "ffmpeg is required for uploads (and ffplay for local ALSA playback), but apt-get is not available to install it."
+  echo "Installing ffmpeg for upload conversion and local playback..."
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y ffmpeg
-  command -v ffplay > /dev/null || fail "ffplay is still missing after installing ffmpeg."
+  command -v ffmpeg > /dev/null || fail "ffmpeg is still missing after installation."
+  if [[ "$use_sonos" == false ]]; then
+    command -v ffplay > /dev/null || fail "ffplay is still missing after installing ffmpeg."
+  fi
 fi
 
 bash "$package/install.sh" /opt/streaming streaming --no-start

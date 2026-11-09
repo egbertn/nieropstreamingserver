@@ -16,7 +16,7 @@ public sealed class StreamingOptions
     public bool UseSonos { get; init; } = true;
     public string[] SonosAddresses { get; init; } = [];
     public int SonosDiscoveryPort { get; init; }
-    public string? SmtpHost { get; init; }
+    public required string SmtpHost { get; init; }
     public int SmtpPort { get; init; } = 587;
     public required string SmtpUsername { get; init; }
     public required string SmtpPassword { get; init; }
@@ -60,10 +60,10 @@ public sealed class StreamingOptions
             UseSonos = configuration.GetValue("Streaming:Playback:UseSonos", true),
             SonosAddresses = sonosAddresses,
             SonosDiscoveryPort = configuration.GetValue("Streaming:Sonos:DiscoveryPort", 0),
-            SmtpHost = configuration["Smtp:Host"],
+            SmtpHost = configuration["Smtp:Host"] ?? throw new InvalidOperationException("Smtp:Host variable required"),
             SmtpPort = configuration.GetValue("Smtp:Port", 587),
-            SmtpUsername = configuration["Smtp:Username"],
-            SmtpPassword = configuration["Smtp:Password"],
+            SmtpUsername = configuration["Smtp:Username"] ?? throw new InvalidOperationException("Smtp:Username variable required"),
+            SmtpPassword = configuration["Smtp:Password"] ?? throw new InvalidOperationException("Smtp:Password variable required"),
             SmtpUseSsl = configuration.GetValue("Smtp:UseSsl", false),
             SmtpFrom =  configuration["Smtp:From"] ?? "music-report@local",
             SmtpFromName = configuration["Smtp:FromName"] ?? "Sonos Muziek Server",

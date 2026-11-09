@@ -24,7 +24,7 @@ public sealed record TrackResponse(string Path, string Title, string Url, string
 
 public sealed record GenreUpdateRequest(string Path, string? Genre);
 
-public sealed record UploadResponse(IReadOnlyList<string> Saved, IReadOnlyList<string> Skipped, IReadOnlyList<string> Flagged);
+public sealed record UploadResponse(IReadOnlyList<string> Saved, IReadOnlyList<string> Skipped, IReadOnlyList<string> Flagged, IReadOnlyList<string> Failed);
 
 public sealed record DeletedResponse(string Deleted);
 

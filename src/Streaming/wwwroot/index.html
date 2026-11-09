@@ -71,7 +71,8 @@
       </label>
     </div>
     <div class="row">
-      <input type="file" id="uploadFiles" accept="audio/*" multiple>
+      <input type="file" id="uploadFiles" accept=".mp3,.m4a,.flac,.wav,.ogg,.mp4,.wmv" multiple>
+      <span data-i18n="uploadFormats">MP3, M4A, FLAC, WAV, OGG, MP4 en WMV worden omgezet naar MP3 met genormaliseerde luidheid.</span>
     </div>
     <div id="licenseFiles"></div>
     <div class="row">
@@ -302,7 +303,7 @@ async function removeTrack(track) {
 
 async function uploadFiles() {
   const input = $('uploadFiles');
-  const files = [...input.files].filter(f => f.type.startsWith('audio/'));
+  const files = [...input.files].filter(isUploadFile);
   if (files.length === 0) { say(t('noAudioSelected')); return; }
 
   const body = new FormData();
@@ -330,6 +331,8 @@ async function uploadFiles() {
     let msg = t('uploadResult', { saved: data.saved.length, skipped: data.skipped.length });
     if (data.flagged.length > 0)
       msg += t('flaggedCopyright') + data.flagged.join('; ');
+    if (data.failed.length > 0)
+      msg += t('conversionFailed') + data.failed.join('; ');
     say(msg);
   } catch (err) {
     say(t('error') + err.message);
@@ -339,13 +342,16 @@ async function uploadFiles() {
 }
 
 renderGenreOptions($('uploadGenreOptions'));
+function isUploadFile(file) {
+  return /\.(mp3|m4a|flac|wav|ogg|mp4|wmv)$/i.test(file.name);
+}
 $('uploadGenreOptions').onchange = updateUploadGenreSummary;
 $('btnUpload').onclick = () => $('uploadDialog').showModal();
 $('uploadFiles').onchange = e => {
   const licenses = $('licenseFiles');
   licenses.replaceChildren();
   for (const file of e.target.files) {
-    if (!file.type.startsWith('audio/')) continue;
+    if (!isUploadFile(file)) continue;
     const label = document.createElement('label');
     label.textContent = t('licenseFor', { name: file.name });
     const input = document.createElement('input');

@@ -65,15 +65,18 @@ curl() {
 }
 useradd() { echo "useradd $*" >> "$TEST_ROOT/system.log"; }
 command() {
-  if [[ "${1:-}" == -v && "${2:-}" == ffplay ]]; then
-    [[ "${TEST_FFPLAY:-false}" == true ]]
-    return
+  if [[ "${1:-}" == -v ]]; then
+    case "${2:-}" in
+      ffplay) [[ "${TEST_FFPLAY:-false}" == true ]]; return ;;
+      ffmpeg) [[ "${TEST_FFMPEG:-true}" == true ]]; return ;;
+    esac
   fi
   builtin command "$@"
 }
 apt-get() {
   echo "apt-get $*" >> "$TEST_ROOT/apt.log"
   TEST_FFPLAY=true
+  TEST_FFMPEG=true
 }
 systemctl() {
   echo "$*" >> "$TEST_ROOT/system.log"
@@ -125,6 +128,11 @@ env TEST_FFPLAY=false bash "$test_root/bootstrap.sh" > "$test_root/output" 2>&1
 grep -Fxq 'Streaming__Playback__UseSonos=true' "$test_root/etc/kestrel-music/environment"
 [[ "$(wc -l < "$test_root/apt.log")" == 2 ]]
 echo "PASS: Sonos selection restores Sonos mode without installing ffmpeg"
+
+rm -f "$test_root/apt.log"
+env TEST_FFMPEG=false bash "$test_root/bootstrap.sh" > "$test_root/output" 2>&1
+grep -Fxq 'apt-get install -y ffmpeg' "$test_root/apt.log"
+echo "PASS: Sonos selection installs missing ffmpeg for upload conversion"
 
 env TEST_GLIBC=2.40 bash "$test_root/bootstrap.sh" > "$test_root/output" 2>&1
 echo "PASS: newer glibc"

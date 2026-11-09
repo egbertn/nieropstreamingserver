@@ -50,11 +50,10 @@ service manager are required. In one deployment measurement, the service used ab
 The installer checks architecture, RAM, available disk space, the release's minimum glibc
 version and native shared libraries before installing. Use a recent 64-bit OS.
 
-For Sonos playback, no local audio output is required. For local ALSA playback, install
-`ffmpeg` and its `ffplay` component as OS packages, and use an OS with a working ALSA audio
-output, such as an analog audio jack or a USB audio adapter/DAC. The quick installer asks
-which output to use and installs the `ffmpeg` package with `apt-get` if ALSA is selected
-and `ffplay` is not already available.
+Upload conversion requires `ffmpeg` with the `libmp3lame` encoder on the server. The quick
+installer installs the `ffmpeg` OS package with `apt-get` if needed. For Sonos playback, no
+local audio output is required. For local ALSA playback, `ffplay` and a working ALSA audio
+output such as an analog audio jack or USB audio adapter/DAC are also required.
 
 ### Quick install
 
@@ -107,6 +106,7 @@ the internet.
 3. Extract and install:
 
    ```bash
+   sudo apt install ffmpeg
    tar -xzf streaming-*-linux-arm64.tar.gz
    cd streaming-*-linux-arm64
    sudo ./install.sh /opt/streaming "$USER"
@@ -122,7 +122,7 @@ After installation, open `http://raspberrypi.local:8080` in a browser on the sam
 enter the generated API token (see [Access](#access)), and open the firewall ports (see
 [Firewall](#firewall)). If the machine is not reachable as `raspberrypi.local`, override
 `Streaming__PublicBaseUrl` in `/etc/kestrel-music/environment`. For the USB-DAC
-broadcast mode, additionally install `ffmpeg` (see
+broadcast mode, also set up local ALSA audio (see
 [USB-DAC broadcast mode](#usb-dac-broadcast-mode)).
 
 ## Professional installation
@@ -170,7 +170,7 @@ speaker. See [USB-DAC broadcast mode](#usb-dac-broadcast-mode) for setup instruc
 | `GET /` | control page with Start/Pause/Stop/Next, volume, upload and track list |
 | `GET /music/{path}` | the audio file itself, with range requests (seeking works) |
 | `GET /api/tracks` | JSON list with path, title and absolute URL |
-| `POST /api/tracks` | multipart upload of one or more `audio/*` files, with optional `invoice` and per-track `license:<original-file-name>` files |
+| `POST /api/tracks` | multipart upload of MP3, M4A, FLAC, WAV, OGG, MP4 or WMV files, with optional `invoice` and per-track `license:<original-file-name>` files |
 | `DELETE /api/tracks/{path}` | delete a single file from the music folder |
 | `GET /playlist.m3u` | M3U with absolute URLs |
 | `GET /tracks` | plain HTML file listing |
@@ -222,6 +222,15 @@ as a router admin page over HTTP.
 
 MP3s (or m4a/flac/wav/ogg) live in `src/Streaming/wwwroot/music`, subfolders are allowed. Upload them from
 the control page, or copy them straight onto the Pi with `rsync` or `scp`.
+
+Uploads, including MP3s, are re-encoded as 192 kbit/s MP3 with FFmpeg's single-pass
+`loudnorm` filter targeting -16 LUFS and -1.5 dBTP. Actual loudness can differ with short
+or peak-limited material. MP4 and WMV uploads use the first audio stream; video is discarded.
+Container and audio-stream metadata are copied where FFmpeg supports them. Files copied directly to the music
+folder are not converted. Existing filenames are never overwritten; a numeric suffix is
+added instead. The upload result reports unsupported, copyright-flagged and failed files
+separately. Conversion temporarily uses disk space for both input and output and runs one
+file at a time, with a 10-minute conversion timeout.
 
 The collection is read from disk on every request, so new files are available immediately
 without a restart. The files on the server together form the playlist; on `POST /api/play`
@@ -322,7 +331,7 @@ git push origin v1.2.3
 ```
 
 The result is one executable of roughly 47 MB plus `appsettings.json` and the control page.
-Nothing else has to be installed on the Pi: no .NET runtime, no snap, no container. Change
+FFmpeg is required for uploads, but no .NET runtime, snap or container is needed. Change
 `RUNTIME` in the workflow to target a different architecture.
 
 The release project is configured for Native AOT. Publishing produces a stripped native
@@ -342,6 +351,9 @@ bash tests/deploy/install-tests.sh
 They cover hardware requirements (including the 512 MB boundary), checksum failures,
 missing releases/libraries, disk space, initial installation, upgrades and health-check
 failures. The release workflow runs these checks before building the binary.
+
+The .NET conversion tests also require `ffmpeg`, `ffprobe`, `libmp3lame` and
+`libvorbis` on the test machine.
 
 Run the local checks with:
 

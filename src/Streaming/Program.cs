@@ -15,6 +15,7 @@ var streamingOptions = StreamingOptions.FromConfiguration(builder.Configuration,
 builder.Host.UseSystemd();
 var services = builder.Services;
 services.AddSingleton(streamingOptions);
+services.AddSingleton<AudioConverter>();
 // Singleton (i.p.v. transient typed client) zodat de speakercache van 5 minuten gedeeld wordt
 // tussen requests en de PlaybackAuditWorker; anders draait elke poll een volledige discovery.
 services.AddHttpClient(nameof(SonosService), c => c.Timeout = TimeSpan.FromSeconds(10));
@@ -99,6 +100,7 @@ app.Use(async (context, next) =>
 });
 
 string[] audioExtensions = [".mp3", ".m4a", ".flac", ".wav", ".ogg"];
+string[] uploadExtensions = [".mp3", ".m4a", ".flac", ".wav", ".ogg", ".mp4", ".wmv"];
 
 IEnumerable<string> EnumerateTracks() =>
     Directory.Exists(musicRoot)
@@ -152,7 +154,7 @@ app.MapPost("/api/tracks/genre", async (GenreUpdateRequest request, HttpRequest 
     return Results.Ok();
 });
 
-app.MapPost("/api/tracks", async (HttpRequest request, bool force = false) =>
+app.MapPost("/api/tracks", async (HttpRequest request, AudioConverter converter, bool force = false) =>
 {
     if (!request.HasFormContentType)
         return Results.BadRequest(new ErrorResponse(L(request, "Geen upload gevonden", "No upload found")));
@@ -161,6 +163,7 @@ app.MapPost("/api/tracks", async (HttpRequest request, bool force = false) =>
     List<string> saved = [];
     List<string> skipped = [];
     List<string> flagged = [];
+    List<string> failed = [];
     var genre = form.TryGetValue("genre", out var genreValue) && !string.IsNullOrWhiteSpace(genreValue) ? genreValue.ToString().Trim() : null;
     var invoiceFile = form.Files.FirstOrDefault(candidate => candidate.Name == "invoice");
     long? purchaseEvidenceId = null;
@@ -176,15 +179,12 @@ app.MapPost("/api/tracks", async (HttpRequest request, bool force = false) =>
     {
         var name = file.FileName;
         var extension = Path.GetExtension(name);
-        var isAudio = file.ContentType?.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) == true;
-
-        if (string.IsNullOrWhiteSpace(name) || !isAudio || !audioExtensions.Contains(extension, StringComparer.InvariantCultureIgnoreCase))
+        if (string.IsNullOrWhiteSpace(name) || !uploadExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
         {
             skipped.Add(file.FileName);
             continue;
         }
 
-        var destination = Path.Combine(musicRoot, name);
         // make sure filename does not contain any directory components.
         if (!Path.GetFileName(name).Equals(name, StringComparison.Ordinal))
         {
@@ -192,43 +192,83 @@ app.MapPost("/api/tracks", async (HttpRequest request, bool force = false) =>
             continue;
         }
 
-        // Never silently truncate a track that is already there.
-        var stem = Path.GetFileNameWithoutExtension(name);
-        var suffix = 2;
-        while (File.Exists(destination))
+        var inputPath = Path.Combine(Path.GetTempPath(), $"streaming-{Guid.NewGuid():N}{extension}");
+        var outputPath = Path.Combine(musicRoot, $".streaming-upload-{Guid.NewGuid():N}.tmp");
+        var inputCreated = false;
+        var outputCreated = false;
+        try
         {
-            destination = Path.Combine(musicRoot, $"{stem} ({suffix++}){extension}");
+            await using (var stream = new FileStream(inputPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                inputCreated = true;
+                await file.CopyToAsync(stream, request.HttpContext.RequestAborted);
+            }
+
+            // Check the source before conversion, since not all tags survive transcoding.
+            var reason = CopyrightCheck.Inspect(inputPath);
+            if (reason is not null && !force)
+            {
+                flagged.Add($"{name}: {reason}");
+                continue;
+            }
+
+            try
+            {
+                using (new FileStream(outputPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    outputCreated = true;
+                await converter.ConvertAsync(inputPath, outputPath, request.HttpContext.RequestAborted);
+            }
+            catch (AudioConversionException ex)
+            {
+                app.Logger.LogWarning(ex, "Unable to convert uploaded file {FileName}", name);
+                failed.Add($"{name}: {L(request, "Conversie mislukt; controleer het bestand en de FFmpeg-installatie", "Conversion failed; check the file and FFmpeg installation")}");
+                continue;
+            }
+
+            var licenseFile = form.Files.FirstOrDefault(candidate => candidate.Name == $"license:{file.FileName}" && candidate.Length > 0);
+            UploadedDocument? license = null;
+            if (licenseFile is not null)
+            {
+                using var licenseStream = new MemoryStream();
+                await licenseFile.CopyToAsync(licenseStream, request.HttpContext.RequestAborted);
+                license = new UploadedDocument(licenseFile.FileName, licenseFile.ContentType, licenseStream.ToArray());
+            }
+
+            // The final move is atomic and never replaces an existing track.
+            var stem = Path.GetFileNameWithoutExtension(name);
+            var suffix = 1;
+            string destination;
+            while (true)
+            {
+                var outputName = suffix == 1 ? $"{stem}.mp3" : $"{stem} ({suffix}).mp3";
+                destination = Path.Combine(musicRoot, outputName);
+                try
+                {
+                    File.Move(outputPath, destination);
+                    break;
+                }
+                catch (IOException) when (File.Exists(destination))
+                {
+                    suffix++;
+                }
+            }
+
+            var trackId = await auditStorage.IndexTrackAsync(destination, purchaseEvidenceId, license, request.HttpContext.RequestAborted);
+            if (genre is not null)
+                await auditStorage.SetGenreOverrideAsync(trackId, genre, request.HttpContext.RequestAborted);
+
+            saved.Add(Path.GetFileName(destination));
         }
-
-        await using (var stream = File.Create(destination))
-            await file.CopyToAsync(stream);
-
-        // Heuristic only: absence of these markers is not proof a track is license-free.
-        var reason = CopyrightCheck.Inspect(destination);
-        if (reason is not null && !force)
+        finally
         {
-            File.Delete(destination);
-            flagged.Add($"{name}: {reason}");
-            continue;
+            if (inputCreated)
+                File.Delete(inputPath);
+            if (outputCreated)
+                File.Delete(outputPath);
         }
-
-        var licenseFile = form.Files.FirstOrDefault(candidate => candidate.Name == $"license:{file.FileName}" && candidate.Length > 0);
-        UploadedDocument? license = null;
-        if (licenseFile is not null)
-        {
-            using var licenseStream = new MemoryStream();
-            await licenseFile.CopyToAsync(licenseStream);
-            license = new UploadedDocument(licenseFile.FileName, licenseFile.ContentType, licenseStream.ToArray());
-        }
-
-        var trackId = await auditStorage.IndexTrackAsync(destination, purchaseEvidenceId, license, request.HttpContext.RequestAborted);
-        if (genre is not null)
-            await auditStorage.SetGenreOverrideAsync(trackId, genre, request.HttpContext.RequestAborted);
-
-        saved.Add(name);
     }
 
-    return Results.Ok(new UploadResponse(saved, skipped, flagged));
+    return Results.Ok(new UploadResponse(saved, skipped, flagged, failed));
 }).DisableAntiforgery();
 
 app.MapDelete("/api/tracks/{*path}", (string path, HttpRequest request) =>
