@@ -60,16 +60,20 @@ output such as an analog audio jack or USB audio adapter/DAC are also required.
 Run on the Raspberry Pi:
 
 ```bash
+curl -fsSL https://nieropcomputervision.com/install-streaming.sh | sudo bash
+sudo systemctl enable --now kestrel-music
+```
+
+The installer is also attached to new GitHub releases:
+
+```bash
 curl -fsSL https://github.com/egbertn/nieropstreamingserver/releases/latest/download/install-streaming.sh | sudo bash
 sudo systemctl enable --now kestrel-music
 ```
 
-The same script can be hosted at `https://nieropcomputervision.com/install-streaming.sh`:
-
-```bash
-curl -fsSL https://nieropcomputervision.com/install-streaming.sh | sudo bash
-sudo systemctl enable --now kestrel-music
-```
+The installer attached to release `v1.0.1` still uses the former repository name and
+fails with `Unexpected GitHub release URL`. Until a newer release is published, use the
+website installer above instead.
 
 After a successful deployment, the `streaming-prod` runner publishes
 `deploy/install-streaming.sh` to the website's persistent `downloads` directory and
