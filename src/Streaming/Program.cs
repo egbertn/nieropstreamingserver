@@ -48,6 +48,11 @@ services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
 
 var app = builder.Build();
 
+var appVersion = (System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(
+        System.Reflection.Assembly.GetEntryAssembly()!)?.InformationalVersion ?? "unknown").Split('+')[0];
+app.Logger.LogInformation("Streaming server version {Version} starting", appVersion);
+app.MapGet("/api/version", () => Results.Text(appVersion));
+
 var musicRoot = streamingOptions.MusicRoot;
 Directory.CreateDirectory(musicRoot);
 

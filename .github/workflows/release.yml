@@ -42,6 +42,7 @@ jobs:
             --output publish \
             -p:DebugType=none \
             -p:DebugSymbols=false \
+            -p:Version="${GITHUB_REF_NAME#v}" \
             -p:SourceRevisionId=${{ github.sha }}
           test -x publish/streaming
 

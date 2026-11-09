@@ -385,5 +385,7 @@ setInterval(() => {
   renderPlayback();
 }, 1000);
 </script>
+<div id="appVersion" style="position: fixed; left: .5rem; bottom: .25rem; font-size: .75rem; opacity: .6;"></div>
+<script>fetch('/api/version').then(r => r.text()).then(v => { document.getElementById('appVersion').textContent = 'v' + v; }).catch(() => {});</script>
 </body>
 </html>
