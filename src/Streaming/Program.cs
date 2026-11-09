@@ -159,10 +159,16 @@ app.MapPost("/api/tracks/genre", async (GenreUpdateRequest request, HttpRequest 
     return Results.Ok();
 });
 
+app.MapGet("/api/tracks/upload-status", (AudioConverter converter) => Results.Ok(new { busy = converter.IsUploadBusy, total = converter.Progress.Total, current = converter.Progress.Current, fraction = converter.Progress.Fraction }));
+
 app.MapPost("/api/tracks", async (HttpRequest request, AudioConverter converter, bool force = false) =>
 {
     if (!request.HasFormContentType)
         return Results.BadRequest(new ErrorResponse(L(request, "Geen upload gevonden", "No upload found")));
+
+    using var uploadSlot = converter.TryBeginUpload();
+    if (uploadSlot is null)
+        return Results.Json(new ErrorResponse(L(request, "Er wordt al een upload verwerkt; probeer het later opnieuw", "An upload is already being processed; try again later")), statusCode: StatusCodes.Status409Conflict);
 
     var form = await request.ReadFormAsync();
     List<string> saved = [];
@@ -180,9 +186,12 @@ app.MapPost("/api/tracks", async (HttpRequest request, AudioConverter converter,
             new UploadedDocument(invoiceFile.FileName, invoiceFile.ContentType, invoiceStream.ToArray()));
     }
 
-    foreach (var file in form.Files.Where(candidate => candidate.Name == "files"))
+    var uploadedFiles = form.Files.Where(candidate => candidate.Name == "files").ToList();
+    converter.ReportBatch(uploadedFiles.Count, 0, 0);
+    foreach (var file in uploadedFiles)
     {
         var name = file.FileName;
+        var fileIndex = uploadedFiles.IndexOf(file);
         var extension = Path.GetExtension(name);
         if (string.IsNullOrWhiteSpace(name) || !uploadExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
         {
@@ -221,7 +230,10 @@ app.MapPost("/api/tracks", async (HttpRequest request, AudioConverter converter,
             {
                 using (new FileStream(outputPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                     outputCreated = true;
-                await converter.ConvertAsync(inputPath, outputPath, request.HttpContext.RequestAborted);
+                converter.ReportBatch(uploadedFiles.Count, fileIndex, 0);
+                await converter.ConvertAsync(inputPath, outputPath,
+                    new Progress<double>(fraction => converter.ReportBatch(uploadedFiles.Count, fileIndex, fraction)),
+                    request.HttpContext.RequestAborted);
             }
             catch (AudioConversionException ex)
             {

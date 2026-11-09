@@ -52,7 +52,7 @@ jobs:
           rm -rf dist "$PKG"
           mkdir -p dist "$PKG"
           cp -r publish/. "$PKG/"
-          cp deploy/kestrel-music.service "$PKG/"
+          cp deploy/nierop-music.service "$PKG/"
           cp deploy/install.sh "$PKG/"
           readelf --version-info publish/streaming \
             | grep -oE 'GLIBC_[0-9]+\.[0-9]+' \
@@ -81,7 +81,7 @@ jobs:
 
             ```bash
             curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/install-streaming.sh | sudo bash
-            sudo systemctl enable --now kestrel-music
+            sudo systemctl enable --now nierop-music
             ```
 
             See the [installation instructions](https://github.com/${{ github.repository }}#installation)

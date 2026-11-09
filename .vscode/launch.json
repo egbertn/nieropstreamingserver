@@ -11,6 +11,12 @@
       "env": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
+      "console": "internalConsole",
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "\\bNow listening on:\\s+http://(?:\\[::\\]|0\\.0\\.0\\.0):(\\d+)",
+        "uriFormat": "http://localhost:%s"
+      },
       "stopAtEntry": false
     }
   ]

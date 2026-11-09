@@ -40,6 +40,14 @@ practical fit for a restaurant, salon or shop that wants to play its own music o
 wifi, without a streaming subscription and without the licensing and reliability questions
 that come with a cloud service.
 
+## Local debugging
+
+In VS Code, start the `.NET Launch Streaming` configuration with F5. Once the server is
+listening, VS Code opens the control page in the default browser at `http://localhost:8080`,
+or at the configured `Streaming:Port`. The browser launch depends on the ASP.NET Core
+`Microsoft.Hosting.Lifetime` information-level startup message being visible in the Debug
+Console.
+
 ## Installation
 The application is a single, standalone native binary compiled with Native AOT. Every
 release ships a ready-to-run package for 64-bit ARM Linux (Raspberry Pi 3/4/5 running a
@@ -50,18 +58,19 @@ service manager are required. In one deployment measurement, the service used ab
 The installer checks architecture, RAM, available disk space, the release's minimum glibc
 version and native shared libraries before installing. Use a recent 64-bit OS.
 
-Upload conversion requires `ffmpeg` with the `libmp3lame` encoder on the server. The quick
+Upload conversion requires `ffmpeg` with the `libmp3lame` encoder on the server. The
 installer installs the `ffmpeg` OS package with `apt-get` if needed. For Sonos playback, no
 local audio output is required. For local ALSA playback, `ffplay` and a working ALSA audio
 output such as an analog audio jack or USB audio adapter/DAC are also required.
 
-### Quick install
+### Install and upgrade
 
-Run on the Raspberry Pi using the latest published GitHub release:
+Run on the Raspberry Pi for both installation and upgrades using the latest published
+GitHub release:
 
 ```bash
 curl -fsSL https://github.com/egbertn/nieropstreamingserver/releases/latest/download/install-streaming.sh | sudo bash
-sudo systemctl enable --now kestrel-music
+sudo systemctl enable --now nierop-music
 ```
 
 The installer attached to release `v1.0.1` still uses the former repository name and
@@ -77,45 +86,25 @@ Open **http://raspberrypi.local:8080** (or `http://<hostname>.local:8080` for an
 Enter the API token printed by the installer. You can retrieve it later with:
 
 ```bash
-sudo cat /etc/kestrel-music/environment
+sudo cat /etc/nierop-music/environment
 ```
 
-The installer creates a dedicated, non-login `streaming` service account and does not
-start a new installation until you run the second command. On upgrades it stops the
-running service before copying files and restarts it afterwards.
+The installer asks whether to use Sonos or local ALSA audio, installs the application in
+`/opt/streaming` and creates a dedicated, non-login `streaming` service account. It does
+not start a new installation until you run the second command. On upgrades it stops the
+running service before copying files and restarts it afterwards. Music, the database,
+schedule, systemd overrides and `/etc/nierop-music/environment` are preserved; the audio
+output selection updates `Streaming__Playback__UseSonos`. If you change the audio output
+on an upgrade, run `sudo systemctl restart nierop-music` to apply the new selection.
 The `.local` address requires mDNS on the Pi and client. If it does not resolve, use the
 Pi's LAN IP in the browser and update `Streaming__PublicBaseUrl` in the environment file
-to that same LAN address, then restart `kestrel-music`. Do not expose this HTTP service to
+to that same LAN address, then restart `nierop-music`. Do not expose this HTTP service to
 the internet.
-
-### Manual download
-
-1. Download the latest `streaming-<version>-linux-arm64.tar.gz` from the
-   [releases page](https://github.com/egbertn/nieropstreamingserver/releases) onto the Pi.
-2. Optionally verify the download with the `.sha256` file:
-
-   ```bash
-   sha256sum -c streaming-*-linux-arm64.tar.gz.sha256
-   ```
-3. Extract and install:
-
-   ```bash
-   sudo apt install ffmpeg
-   tar -xzf streaming-*-linux-arm64.tar.gz
-   cd streaming-*-linux-arm64
-   sudo ./install.sh /opt/streaming "$USER"
-   ```
-
-The package installer copies the application to `/opt/streaming` (or the directory you pass as the
-first argument), installs and starts the `kestrel-music` systemd service as the given user,
-and waits for `/health` to respond. Re-running it with a newer release upgrades in place;
-the music collection in `wwwroot/music`, SQLite database in `data/`,
-systemd overrides and `/etc/kestrel-music/environment` are preserved.
 
 After installation, open `http://raspberrypi.local:8080` in a browser on the same network,
 enter the generated API token (see [Access](#access)), and open the firewall ports (see
 [Firewall](#firewall)). If the machine is not reachable as `raspberrypi.local`, override
-`Streaming__PublicBaseUrl` in `/etc/kestrel-music/environment`. For the USB-DAC
+`Streaming__PublicBaseUrl` in `/etc/nierop-music/environment`. For the USB-DAC
 broadcast mode, also set up local ALSA audio (see
 [USB-DAC broadcast mode](#usb-dac-broadcast-mode)).
 
@@ -191,7 +180,7 @@ control page asks for the token once and keeps it in `localStorage`. Because the
 custom one, browsers send a CORS preflight for it, which also stops other websites from
 firing requests at the service.
 
-Release installations automatically generate a token in `/etc/kestrel-music/environment`.
+Release installations automatically generate a token in `/etc/nierop-music/environment`.
 Edit that root-only file to change the token or public LAN URL and restart the service.
 The environment file takes precedence over `Environment=` entries in systemd overrides.
 
@@ -200,7 +189,7 @@ local development; a warning is logged at startup. Generate a token with
 `openssl rand -base64 24` and set it through systemd so it stays out of git:
 
 ```bash
-sudo systemctl edit kestrel-music
+sudo systemctl edit --full nierop-music
 ```
 ```ini
 [Service]
@@ -215,18 +204,15 @@ as a router admin page over HTTP.
 ## Files on the Raspberry Pi
 
 There is no `appsettings.json`; configuration is done with environment variables
-(`Streaming__...`, `Smtp__...`) in `/etc/kestrel-music/environment` or a systemd override.
+(`Streaming__...`, `Smtp__...`) in `/etc/nierop-music/environment` or a systemd override.
 
 | What | Location |
 |---|---|
 | Application | `/opt/streaming` |
 | Music | `/opt/streaming/wwwroot/music` |
 | Database, schedule | `/opt/streaming/data` |
-| Secrets and settings | `/etc/kestrel-music/environment` |
-| Service unit | `/etc/systemd/system/kestrel-music.service` |
-
-The package installer accepts a different directory as its first argument; the quick
-installer uses `/opt/streaming`.
+| Secrets and settings | `/etc/nierop-music/environment` |
+| Service unit | `/etc/systemd/system/nierop-music.service` |
 
 The `data` directory holds only the database and schedule; music is never stored there.
 Music and data are kept across upgrades and deployments.
@@ -310,9 +296,9 @@ Neither workflow needs a runner on the Raspberry Pi.
 Pushing a tag matching `v*` runs `.github/workflows/release.yml` on the same
 `streaming-build` runner. It runs the tests, publishes the Native AOT executable and
 attaches `streaming-<tag>-linux-arm64.tar.gz` — containing the binary,
-the control page, systemd unit, `install.sh`, license and minimum glibc version — plus a
-SHA-256 checksum and the standalone `install-streaming.sh` bootstrap script to a GitHub
-release. To cut a release:
+the control page, systemd unit, internal `install.sh` helper, license and minimum glibc
+version — plus a SHA-256 checksum and the public `install-streaming.sh` installer to a
+GitHub release. The public installer invokes the helper automatically. To cut a release:
 
 ```bash
 git tag v1.2.3
@@ -363,7 +349,7 @@ Configure the repository variables `SONAR_ORGANIZATION` and `SONAR_PROJECT_KEY`,
 `SONAR_TOKEN` secret, before enabling the quality gate.
 
 ```bash
-journalctl -u kestrel-music -f
+journalctl -u nierop-music -f
 ```
 
 ## Configuration
@@ -389,7 +375,7 @@ journalctl -u kestrel-music -f
 Override these through systemd using double underscores:
 
 ```bash
-sudo systemctl edit kestrel-music
+sudo systemctl edit nierop-music
 ```
 ```ini
 [Service]

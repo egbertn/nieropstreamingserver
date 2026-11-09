@@ -1,27 +1,21 @@
 #!/bin/bash
-# Installs the streaming service from an extracted release package.
-# Run on the target machine (e.g. a Raspberry Pi) from the extracted directory:
-#
-#   sudo ./install.sh [install-dir] [service-user] [--no-start]
-#
-# Defaults: install-dir=/opt/streaming, service-user=the dedicated streaming account.
-# Safe to re-run for upgrades: the music collection and database are kept.
+# Internal helper invoked by install-streaming.sh from an extracted release package.
+# The public installer performs the prerequisite checks and audio configuration.
 set -euo pipefail
 
 if [[ $EUID -ne 0 ]]; then
-  echo "Run this script with sudo: sudo ./install.sh" >&2
+  echo "The installation helper must run as root; use the public install-streaming.sh installer with sudo." >&2
   exit 1
 fi
 
 INSTALL_DIR="${1:-/opt/streaming}"
 SERVICE_USER="${2:-streaming}"
 START_SERVICE="${3:-}"
-SERVICE_NAME=kestrel-music
+SERVICE_NAME=nierop-music
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ -z "$SERVICE_USER" || "$SERVICE_USER" == root ]]; then
-  echo "Pass the non-root user that should run the service:" >&2
-  echo "  sudo ./install.sh [install-dir] <user>" >&2
+  echo "The installation helper requires a non-root service user." >&2
   exit 1
 fi
 [[ "$INSTALL_DIR" =~ ^/[A-Za-z0-9_./-]+$ && "$INSTALL_DIR" != / ]] || {
@@ -54,7 +48,7 @@ SERVICE_GROUP="$(id -gn "$SERVICE_USER")"
 
 if [[ ! -x "$SRC_DIR/streaming" ]]; then
   echo "The 'streaming' binary was not found next to install.sh." >&2
-  echo "Run this script from the extracted release directory." >&2
+  echo "The release package is incomplete; run the public install-streaming.sh installer." >&2
   exit 1
 fi
 [[ "$SRC_DIR" != "$INSTALL_DIR" ]] || {
@@ -67,7 +61,7 @@ host="$(hostname)"
   exit 1
 }
 token=""
-if [[ ! -f /etc/kestrel-music/environment ]]; then
+if [[ ! -f /etc/nierop-music/environment ]]; then
   token="$(openssl rand -hex 24)"
 fi
 
@@ -86,7 +80,7 @@ shopt -s nullglob
 for entry in "$SRC_DIR"/*; do
   base="$(basename "$entry")"
   case "$base" in
-    install.sh|kestrel-music.service|glibc-minimum|data) continue ;;
+    install.sh|nierop-music.service|glibc-minimum|data) continue ;;
     wwwroot)
       mkdir -p "$INSTALL_DIR/wwwroot"
       for asset in "$entry"/*; do
@@ -104,9 +98,9 @@ mkdir -p "$INSTALL_DIR/wwwroot/music" "$INSTALL_DIR/data"
 chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR"
 chmod +x "$INSTALL_DIR/streaming"
 
-install -d -m 700 /etc/kestrel-music
-if [[ ! -f /etc/kestrel-music/environment ]]; then
-  (umask 077; cat > /etc/kestrel-music/environment <<EOF
+install -d -m 700 /etc/nierop-music
+if [[ ! -f /etc/nierop-music/environment ]]; then
+  (umask 077; cat > /etc/nierop-music/environment <<EOF
 Streaming__ApiToken=$token
 Streaming__PublicBaseUrl=http://$host.local:8080
 Streaming__Sonos__Addresses=
@@ -116,14 +110,14 @@ fi
 
 sed -e "s|__DIR__|$INSTALL_DIR|g" -e "s|__USER__|$SERVICE_USER|g" \
   -e "s|^Group=.*|Group=$SERVICE_GROUP|" \
-  "$SRC_DIR/kestrel-music.service" > "/etc/systemd/system/$SERVICE_NAME.service"
+  "$SRC_DIR/nierop-music.service" > "/etc/systemd/system/$SERVICE_NAME.service"
 
 systemctl daemon-reload
 if [[ "$START_SERVICE" == --no-start && "$was_active" == false ]]; then
   echo "Service installed but not started."
   echo "Start it with: sudo systemctl enable --now $SERVICE_NAME"
   echo "API token (enter this in the browser):"
-  grep '^Streaming__ApiToken=' /etc/kestrel-music/environment
+  grep '^Streaming__ApiToken=' /etc/nierop-music/environment
   exit 0
 fi
 systemctl enable "$SERVICE_NAME"
@@ -152,7 +146,7 @@ cat <<EOF
 Installed. Next steps:
   1. Open http://$(hostname).local:8080 from a browser on the same network.
   2. View the generated API token (enter this in the browser):
-       sudo cat /etc/kestrel-music/environment
+       sudo cat /etc/nierop-music/environment
   3. Edit that file to change the token, speaker addresses or LAN URL,
      then run sudo systemctl restart $SERVICE_NAME.
   4. Open the firewall for the speaker (see README, section Firewall).

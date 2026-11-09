@@ -20,7 +20,7 @@ Environment=Smtp__Username=
 Environment=Streaming__Playback__UseSonos=true
 Environment=Streaming__Port=8080
 Environment=Streaming__ApiToken=
-EnvironmentFile=-/etc/kestrel-music/environment
+EnvironmentFile=-/etc/nierop-music/environment
 
 # Set Streaming__ApiToken through a systemd override or environment file.
 User=__USER__
@@ -29,7 +29,7 @@ SupplementaryGroups=audio
 Restart=always
 RestartSec=5
 KillSignal=SIGINT
-SyslogIdentifier=kestrel-music
+SyslogIdentifier=nierop-music
 
 NoNewPrivileges=true
 PrivateTmp=true

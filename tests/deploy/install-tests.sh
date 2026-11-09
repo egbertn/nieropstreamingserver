@@ -8,7 +8,7 @@ trap 'echo "Test failed at line $LINENO" >&2; if [[ -f "$test_root/output" ]]; t
 export TEST_ROOT="$test_root"
 mkdir -p "$test_root/run/systemd/system" "$test_root/fixture/streaming-v1.2.3-linux-arm64"
 package="$test_root/fixture/streaming-v1.2.3-linux-arm64"
-printf '#!/bin/bash\nprintf "%%s\\n" "$*" > "$TEST_ROOT/invocation"\nmkdir -p "$TEST_ROOT/etc/kestrel-music"\nprintf "Streaming__ApiToken=%%048d\\n" 0 > "$TEST_ROOT/etc/kestrel-music/environment"\n' > "$package/install.sh"
+printf '#!/bin/bash\nprintf "%%s\\n" "$*" > "$TEST_ROOT/invocation"\nmkdir -p "$TEST_ROOT/etc/nierop-music"\nprintf "Streaming__ApiToken=%%048d\\n" 0 > "$TEST_ROOT/etc/nierop-music/environment"\n' > "$package/install.sh"
 printf '#!/bin/bash\nexit 0\n' > "$package/streaming"
 chmod +x "$package/streaming"
 echo 2.36 > "$package/glibc-minimum"
@@ -18,7 +18,7 @@ tar -czf "$test_root/release.tar.gz" -C "$test_root/fixture" streaming-v1.2.3-li
 sed -e '/^\[\[ \$EUID -eq 0 \]\]/d' \
   -e "s|/run/systemd/system|$test_root/run/systemd/system|" \
   -e "s|/dev/tty|$test_root/tty|" \
-  -e "s|/etc/kestrel-music/environment|$test_root/etc/kestrel-music/environment|g" \
+  -e "s|/etc/nierop-music/environment|$test_root/etc/nierop-music/environment|g" \
   "$repository/deploy/install-streaming.sh" > "$test_root/bootstrap.sh"
 echo 1 > "$test_root/tty"
 
@@ -112,20 +112,20 @@ mkdir "$test_root/run/systemd/system"
 
 bash "$test_root/bootstrap.sh" > "$test_root/output" 2>&1
 grep -Fxq '/opt/streaming streaming --no-start' "$test_root/invocation"
-grep -Fxq 'Streaming__Playback__UseSonos=true' "$test_root/etc/kestrel-music/environment"
+grep -Fxq 'Streaming__Playback__UseSonos=true' "$test_root/etc/nierop-music/environment"
 echo "PASS: exactly 512 MB, verified download and no-start installation"
 
 echo 2 > "$test_root/tty"
 env TEST_FFPLAY=false bash "$test_root/bootstrap.sh" > "$test_root/output" 2>&1
 grep -Fxq 'apt-get update' "$test_root/apt.log"
 grep -Fxq 'apt-get install -y ffmpeg' "$test_root/apt.log"
-grep -Fxq 'Streaming__Playback__UseSonos=false' "$test_root/etc/kestrel-music/environment"
-grep -q '^Streaming__ApiToken=[a-f0-9]\{48\}$' "$test_root/etc/kestrel-music/environment"
+grep -Fxq 'Streaming__Playback__UseSonos=false' "$test_root/etc/nierop-music/environment"
+grep -q '^Streaming__ApiToken=[a-f0-9]\{48\}$' "$test_root/etc/nierop-music/environment"
 echo "PASS: ALSA selection installs ffmpeg when ffplay is missing and preserves environment"
 
 echo 1 > "$test_root/tty"
 env TEST_FFPLAY=false bash "$test_root/bootstrap.sh" > "$test_root/output" 2>&1
-grep -Fxq 'Streaming__Playback__UseSonos=true' "$test_root/etc/kestrel-music/environment"
+grep -Fxq 'Streaming__Playback__UseSonos=true' "$test_root/etc/nierop-music/environment"
 [[ "$(wc -l < "$test_root/apt.log")" == 2 ]]
 echo "PASS: Sonos selection restores Sonos mode without installing ffmpeg"
 
@@ -139,11 +139,11 @@ echo "PASS: newer glibc"
 
 # Exercise the real package copy/configuration logic using private filesystem paths.
 mkdir -p "$test_root/opt" "$test_root/etc/systemd/system" "$test_root/source/wwwroot/music"
-rm -f "$test_root/etc/kestrel-music/environment"
+rm -f "$test_root/etc/nierop-music/environment"
 sed -e 's/if \[\[ \$EUID -ne 0 \]\]; then/if false; then/' \
   -e "s|/etc/|$test_root/etc/|g" -e "s|/opt/|$test_root/opt/|g" \
   "$repository/deploy/install.sh" > "$test_root/source/install.sh"
-cp "$repository/deploy/kestrel-music.service" "$test_root/source/kestrel-music.service"
+cp "$repository/deploy/nierop-music.service" "$test_root/source/nierop-music.service"
 cp "$package/streaming" "$test_root/source/streaming"
 echo new > "$test_root/source/wwwroot/index.html"
 echo excluded > "$test_root/source/wwwroot/music/excluded.mp3"
@@ -156,24 +156,24 @@ export -f id chown hostname sleep
 bash "$test_root/source/install.sh" "$test_root/opt/streaming" streaming --no-start > "$test_root/output" 2>&1
 [[ -f "$test_root/opt/streaming/wwwroot/index.html" ]]
 [[ ! -f "$test_root/opt/streaming/wwwroot/music/excluded.mp3" ]]
-grep -q '^Streaming__ApiToken=[a-f0-9]\{48\}$' "$test_root/etc/kestrel-music/environment"
-grep -Fxq 'Streaming__PublicBaseUrl=http://raspberrypi.local:8080' "$test_root/etc/kestrel-music/environment"
-[[ "$(stat -c %a "$test_root/etc/kestrel-music/environment")" == 600 ]]
+grep -q '^Streaming__ApiToken=[a-f0-9]\{48\}$' "$test_root/etc/nierop-music/environment"
+grep -Fxq 'Streaming__PublicBaseUrl=http://raspberrypi.local:8080' "$test_root/etc/nierop-music/environment"
+[[ "$(stat -c %a "$test_root/etc/nierop-music/environment")" == 600 ]]
 ! grep -q '^restart' "$test_root/system.log"
 echo "PASS: first install, generated protected token, LAN URL, no service start"
 
 echo music > "$test_root/opt/streaming/wwwroot/music/existing.mp3"
 echo database > "$test_root/opt/streaming/data/streaming.db"
 echo schedule > "$test_root/opt/streaming/data/schedule.json"
-cp "$test_root/etc/kestrel-music/environment" "$test_root/environment-before"
+cp "$test_root/etc/nierop-music/environment" "$test_root/environment-before"
 env TEST_ACTIVE=true bash "$test_root/source/install.sh" "$test_root/opt/streaming" streaming --no-start \
   > "$test_root/output" 2>&1
 grep -Fxq music "$test_root/opt/streaming/wwwroot/music/existing.mp3"
 grep -Fxq database "$test_root/opt/streaming/data/streaming.db"
 grep -Fxq schedule "$test_root/opt/streaming/data/schedule.json"
-cmp "$test_root/environment-before" "$test_root/etc/kestrel-music/environment"
-grep -Fxq 'stop kestrel-music' "$test_root/system.log"
-grep -Fxq 'restart kestrel-music' "$test_root/system.log"
+cmp "$test_root/environment-before" "$test_root/etc/nierop-music/environment"
+grep -Fxq 'stop nierop-music' "$test_root/system.log"
+grep -Fxq 'restart nierop-music' "$test_root/system.log"
 echo "PASS: upgrade preserves music, database, schedule, settings and token; restarts service"
 
 if env TEST_HEALTH=false bash "$test_root/source/install.sh" "$test_root/opt/streaming" streaming \

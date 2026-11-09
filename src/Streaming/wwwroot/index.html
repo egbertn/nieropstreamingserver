@@ -30,9 +30,15 @@
   .genre-options label { white-space: nowrap; }
   .genre-picker .genre-options { position: absolute; z-index: 1; padding: .75rem; border: 1px solid #8888; background: Canvas; box-shadow: 0 .25rem .75rem #0003; }
   #genreDialog { min-width: min(28rem, calc(100vw - 4rem)); }
+  #uploadLock { position: fixed; inset: 0; background: #0006; z-index: 1000; display: none; }
+  body.uploading #uploadLock { display: block; }
+  #btnUpload { position: relative; overflow: hidden; }
+  body.uploading #btnUpload { z-index: 1001; cursor: progress; background: linear-gradient(90deg, #2d7d46 var(--progress, 0%), #8881 var(--progress, 0%)); }
+  #btnUpload.indeterminate { background: repeating-linear-gradient(90deg, #2d7d4666 0 1rem, #8881 1rem 2rem); }
 </style>
 </head>
 <body>
+<div id="uploadLock"></div>
 <div style="display: flex; justify-content: space-between; align-items: center;">
   <h1 style="margin: 0;" data-i18n="music">Muziek</h1>
   <div style="display: flex; gap: .5rem; flex-wrap: wrap; justify-content: flex-end;">
@@ -323,10 +329,11 @@ async function uploadFiles() {
   $('licenseFiles').replaceChildren();
 
   say(t('uploading'));
+  setUploading(true);
+  const poll = setInterval(pollConversion, 500);
   try {
-    const res = await api('/api/tracks', { method: 'POST', body });
-    const data = await res.json();
-    if (!res.ok) { say(data.error); return; }
+    const { ok, data } = await sendUpload(body);
+    if (!ok) { say(data.error); return; }
 
     let msg = t('uploadResult', { saved: data.saved.length, skipped: data.skipped.length });
     if (data.flagged.length > 0)
@@ -337,16 +344,87 @@ async function uploadFiles() {
   } catch (err) {
     say(t('error') + err.message);
     return;
+  } finally {
+    clearInterval(poll);
+    setUploading(false);
   }
   await refreshAfterChange(false);
 }
+
+let uploadSent = false;
+
+function setUploadProgress(label, fraction) {
+  const btn = $('btnUpload');
+  btn.textContent = label;
+  btn.classList.toggle('indeterminate', fraction === null);
+  btn.style.setProperty('--progress', fraction === null ? '0%' : Math.round(fraction * 100) + '%');
+}
+
+function setUploading(on) {
+  document.body.classList.toggle('uploading', on);
+  $('btnUpload').disabled = on;
+  uploadSent = false;
+  if (on) setUploadProgress(t('uploading'), 0);
+  else {
+    $('btnUpload').classList.remove('indeterminate');
+    $('btnUpload').textContent = t('upload');
+  }
+}
+
+// After the bytes are sent the server converts each file; its progress comes from the status endpoint.
+async function pollConversion() {
+  if (!uploadSent) return;
+  try {
+    const s = await (await api('/api/tracks/upload-status')).json();
+    if (!s.busy || s.total === 0) return;
+    const fraction = (s.current + s.fraction) / s.total;
+    setUploadProgress(`${t('converting', { current: Math.min(s.current + 1, s.total), total: s.total })} (${Math.round(fraction * 100)}%)`, fraction);
+  } catch { /* try again on the next tick */ }
+}
+
+function sendUpload(body) {
+  const attempt = () => new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/tracks');
+    const token = localStorage.getItem('apiToken');
+    if (token) xhr.setRequestHeader('X-Api-Token', token);
+    xhr.upload.onprogress = e => {
+      if (e.lengthComputable) setUploadProgress(`${t('uploading')} ${Math.round(e.loaded / e.total * 100)}%`, e.loaded / e.total);
+    };
+    xhr.upload.onload = () => { uploadSent = true; setUploadProgress(t('converting', { current: 1, total: '…' }), null); };
+    xhr.onerror = () => reject(new Error(t('error')));
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText); } catch { /* non-JSON error body */ }
+      resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, data });
+    };
+    xhr.send(body);
+  });
+
+  return attempt().then(result => {
+    if (result.status !== 401) return result;
+    const token = prompt(t('accessPrompt'));
+    if (!token) return result;
+    localStorage.setItem('apiToken', token);
+    return attempt();
+  });
+}
+window.addEventListener('beforeunload', e => {
+  if (document.body.classList.contains('uploading')) e.preventDefault();
+});
 
 renderGenreOptions($('uploadGenreOptions'));
 function isUploadFile(file) {
   return /\.(mp3|m4a|flac|wav|ogg|mp4|wmv)$/i.test(file.name);
 }
 $('uploadGenreOptions').onchange = updateUploadGenreSummary;
-$('btnUpload').onclick = () => $('uploadDialog').showModal();
+$('btnUpload').onclick = async () => {
+  try {
+    const status = await (await api('/api/tracks/upload-status')).json();
+    if (status.busy) { say(t('uploadBusy')); return; }
+  } catch { /* the server still rejects concurrent uploads */ }
+  $('uploadDialog').showModal();
+};
 $('uploadFiles').onchange = e => {
   const licenses = $('licenseFiles');
   licenses.replaceChildren();

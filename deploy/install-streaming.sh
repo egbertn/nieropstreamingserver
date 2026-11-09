@@ -98,7 +98,7 @@ if ! command -v ffmpeg > /dev/null || { [[ "$use_sonos" == false ]] && ! command
 fi
 
 bash "$package/install.sh" /opt/streaming streaming --no-start
-environment_file=/etc/kestrel-music/environment
+environment_file=/etc/nierop-music/environment
 if grep -q '^Streaming__Playback__UseSonos=' "$environment_file"; then
   sed -i "s|^Streaming__Playback__UseSonos=.*|Streaming__Playback__UseSonos=$use_sonos|" "$environment_file"
 else
@@ -111,5 +111,5 @@ if [[ "$use_sonos" == false ]]; then
 else
   echo "  Sonos over Wi-Fi is selected."
 fi
-echo "  sudo systemctl enable --now kestrel-music"
+echo "  sudo systemctl enable --now nierop-music"
 echo "Then open http://$(hostname).local:8080 (or this machine's LAN IP)."
