@@ -77,12 +77,14 @@ jobs:
           mkdir -p "$DEPLOY_PREV" "$DEPLOY_DIR"
           rsync -a --delete \
             --exclude 'wwwroot/music/***' \
+            --exclude 'data/***' \
             "$DEPLOY_DIR/" "$DEPLOY_PREV/"
 
       - name: Activate new version
         run: |
           rsync -a --delete \
             --exclude 'wwwroot/music/***' \
+            --exclude 'data/***' \
             "$STAGING_DIR/" "$DEPLOY_DIR/"
           chmod +x "$DEPLOY_DIR/streaming"
           sudo systemctl restart "$SERVICE_NAME"
@@ -117,6 +119,7 @@ jobs:
           fi
           rsync -a --delete \
             --exclude 'wwwroot/music/***' \
+            --exclude 'data/***' \
             "$DEPLOY_PREV/" "$DEPLOY_DIR/"
           sudo systemctl restart "$SERVICE_NAME"
           if curl -sf --retry 5 --retry-delay 3 --retry-connrefused "$HEALTH_URL" > /dev/null; then

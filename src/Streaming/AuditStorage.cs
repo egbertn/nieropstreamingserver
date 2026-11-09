@@ -135,11 +135,22 @@ public sealed class AuditStorage (StreamingOptions options): IAuditStorage
         if (existing is long value)
         {
             id = value;
-            var update = connection.CreateCommand();
-            update.Transaction = transaction;
-            update.CommandText = "UPDATE MusicFile SET RelativePath = $path, FileName = $name, Title = $title, MetadataJson = $metadata, FileSizeBytes = $size, IndexedAtUtc = $indexed, Genre = $genre WHERE Id = $id";
-            AddTrackParameters(update, id, relativePath, fileInfo, metadata, now);
-            await update.ExecuteNonQueryAsync(cancellationToken);
+            var storedPath = connection.CreateCommand();
+            storedPath.Transaction = transaction;
+            storedPath.CommandText = "SELECT RelativePath FROM MusicFile WHERE Id = $id";
+            storedPath.Parameters.AddWithValue("$id", id);
+            var currentPath = (string?)await storedPath.ExecuteScalarAsync(cancellationToken);
+            // Identical copies share one row; keep the row on its original file so the copies do not steal it from each other.
+            var isCopy = currentPath is not null && !string.Equals(currentPath, relativePath, StringComparison.OrdinalIgnoreCase)
+                && File.Exists(Path.Combine(options.MusicRoot, currentPath));
+            if (!isCopy)
+            {
+                var update = connection.CreateCommand();
+                update.Transaction = transaction;
+                update.CommandText = "UPDATE MusicFile SET RelativePath = $path, FileName = $name, Title = $title, MetadataJson = $metadata, FileSizeBytes = $size, IndexedAtUtc = $indexed, Genre = $genre WHERE Id = $id";
+                AddTrackParameters(update, id, relativePath, fileInfo, metadata, now);
+                await update.ExecuteNonQueryAsync(cancellationToken);
+            }
         }
         else
         {
@@ -198,22 +209,46 @@ public sealed class AuditStorage (StreamingOptions options): IAuditStorage
         var command = connection.CreateCommand();
         command.CommandText = "SELECT Id FROM MusicFile WHERE RelativePath = $path";
         command.Parameters.AddWithValue("$path", relativePath);
-        return await command.ExecuteScalarAsync(cancellationToken) is long id ? id : null;
+        if (await command.ExecuteScalarAsync(cancellationToken) is long id)
+            return id;
+
+        // An identical copy shares the row of the original file via its checksum.
+        var fullPath = Path.Combine(options.MusicRoot, relativePath);
+        if (!File.Exists(fullPath))
+            return null;
+        var byChecksum = connection.CreateCommand();
+        byChecksum.CommandText = "SELECT Id FROM MusicFile WHERE Checksum = $checksum";
+        byChecksum.Parameters.AddWithValue("$checksum", await GetOrCreateChecksumAsync(fullPath, cancellationToken));
+        return await byChecksum.ExecuteScalarAsync(cancellationToken) is long copyId ? copyId : null;
     }
 
     public async Task<IReadOnlyDictionary<string, string>> GetEffectiveGenresAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
         var command = connection.CreateCommand();
-        command.CommandText = "SELECT RelativePath, Genre, GenreOverride FROM MusicFile";
+        command.CommandText = "SELECT RelativePath, Genre, GenreOverride, Checksum FROM MusicFile";
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
+        var byChecksum = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
         {
-            var relativePath = reader.GetString(0);
-            var genre = reader.IsDBNull(1) ? null : reader.GetString(1);
-            var genreOverride = reader.IsDBNull(2) ? null : reader.GetString(2);
-            result[relativePath] = genreOverride ?? genre ?? "onbekend";
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var relativePath = reader.GetString(0);
+                var genre = reader.IsDBNull(1) ? null : reader.GetString(1);
+                var genreOverride = reader.IsDBNull(2) ? null : reader.GetString(2);
+                result[relativePath] = byChecksum[reader.GetString(3)] = genreOverride ?? genre ?? "onbekend";
+            }
+        }
+
+        // Identical copies of a track show the genre of the shared row.
+        if (Directory.Exists(options.MusicRoot))
+        {
+            foreach (var sidecar in Directory.EnumerateFiles(options.MusicRoot, "*.checksum", SearchOption.AllDirectories))
+            {
+                var trackPath = Path.GetRelativePath(options.MusicRoot, sidecar[..^".checksum".Length]).Replace(Path.DirectorySeparatorChar, '/');
+                if (!result.ContainsKey(trackPath) && byChecksum.TryGetValue((await File.ReadAllTextAsync(sidecar, cancellationToken)).Trim(), out var shared))
+                    result[trackPath] = shared;
+            }
         }
         return result;
     }
