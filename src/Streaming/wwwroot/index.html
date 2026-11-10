@@ -101,6 +101,18 @@
   </form>
 </dialog>
 
+<dialog id="filterDialog">
+  <form method="dialog">
+    <h2 data-i18n="filterGenres">Genres filteren</h2>
+    <label><input type="checkbox" id="filterAll"> <span data-i18n="allGenres">Alle genres</span></label>
+    <div class="genre-options" id="filterGenreOptions"></div>
+    <div class="row">
+      <button value="cancel" data-i18n="cancel">Annuleren</button>
+      <button value="filter" data-i18n="filter">Filter</button>
+    </div>
+  </form>
+</dialog>
+
 <div class="row">
   <label><span data-i18n="playMode">Afspeelmodus</span>
     <select id="playMode">
@@ -122,7 +134,7 @@
 <h2 data-i18n="tracksHeading">Nummers</h2>
 <div class="row">
   <label><span data-i18n="searchName">Zoek op naam</span> <input type="search" id="searchName"></label>
-  <label><span data-i18n="searchGenre">Zoek op genre</span> <input type="search" id="searchGenre"></label>
+  <span data-i18n="searchGenre">Zoek op genre</span> <button type="button" id="searchGenre" class="genre"></button>
 </div>
 <p id="selectionInfo" aria-live="polite"></p>
 <table class="track-table">

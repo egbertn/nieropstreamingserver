@@ -132,16 +132,45 @@ await auditStorage.InitializeAsync();
 foreach (var track in EnumerateTracks())
     await auditStorage.IndexTrackAsync(Path.Combine(musicRoot, track), null, null);
 
-app.MapGet("/api/tracks", async (HttpRequest request) =>
+var knownGenres = new HashSet<string>(await auditStorage.GetGenresAsync(), StringComparer.OrdinalIgnoreCase);
+app.MapGet("/api/genres", (HttpResponse response) =>
 {
-    var genres = await auditStorage.GetEffectiveGenresAsync(request.HttpContext.RequestAborted);
-    var metadata = await auditStorage.GetTrackMetadataAsync(request.HttpContext.RequestAborted);
-    return EnumerateTracks().Select(t => new TrackResponse(
+    response.Headers.CacheControl = "private, max-age=3600";
+    return knownGenres.Order(StringComparer.CurrentCultureIgnoreCase).ToArray();
+});
+
+async Task<string[]> FilterTracksAsync(string? name, IReadOnlyCollection<string>? wantedGenres, CancellationToken ct)
+{
+    var tracks = EnumerateTracks();
+    if (!string.IsNullOrWhiteSpace(name))
+    {
+        var needle = name.Trim();
+        tracks = tracks.Where(t => Path.GetFileNameWithoutExtension(t).Contains(needle, StringComparison.CurrentCultureIgnoreCase));
+    }
+    if (wantedGenres is { Count: > 0 })
+    {
+        var effective = await auditStorage.GetEffectiveGenresAsync(ct);
+        var wanted = new HashSet<string>(wantedGenres, StringComparer.OrdinalIgnoreCase);
+        tracks = tracks.Where(t => effective.TryGetValue(t, out var g)
+            && g.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Any(wanted.Contains));
+    }
+    return tracks.ToArray();
+}
+
+app.MapGet("/api/tracks", async (HttpRequest request, string? name, string[]? genre, int page = 0, int pageSize = 10) =>
+{
+    var ct = request.HttpContext.RequestAborted;
+    pageSize = Math.Clamp(pageSize, 1, 100);
+    var matches = await FilterTracksAsync(name, genre, ct);
+    var effective = await auditStorage.GetEffectiveGenresAsync(ct);
+    var metadata = await auditStorage.GetTrackMetadataAsync(ct);
+    var items = matches.Skip(Math.Max(page, 0) * pageSize).Take(pageSize).Select(t => new TrackResponse(
         t,
         Path.GetFileNameWithoutExtension(t),
         UrlFor(request, t),
-        genres.GetValueOrDefault(t, "onbekend"),
+        effective.GetValueOrDefault(t, "onbekend"),
         metadata.GetValueOrDefault(t, new TrackMetadata("", "", 0, "", "", "", "", null, null, null, null)))).ToArray();
+    return new TracksPageResponse(items, matches.Length);
 });
 
 app.MapPost("/api/tracks/genre", async (GenreUpdateRequest request, HttpRequest http) =>
@@ -618,11 +647,9 @@ app.MapPost("/api/play", async (SonosService sonos, PlaybackCoordinator coordina
 
 app.MapPost("/api/play/selection", async (PlaySelectionRequest selection, SonosService sonos, PlaybackCoordinator coordinator, HttpRequest request, string? speaker, bool shuffle = false) =>
 {
-    var available = EnumerateTracks().ToHashSet(StringComparer.Ordinal);
-    if (selection.Paths is null || selection.Paths.Count == 0 || selection.Paths.Any(path => path is null || !available.Contains(path)) || selection.Paths.Distinct(StringComparer.Ordinal).Count() != selection.Paths.Count)
-        return Results.BadRequest(new ErrorResponse(L(request, "De selectie is leeg of bevat ongeldige nummers; vernieuw de lijst", "The selection is empty or contains invalid tracks; refresh the list")));
-    return await StartPlaybackAsync(sonos, coordinator, request, speaker, selection.Paths.ToArray(), shuffle, false);
-}).WithSummary("Play the selected tracks, ignoring the schedule");
+    var tracks = await FilterTracksAsync(selection.Name, selection.Genres, request.HttpContext.RequestAborted);
+    return await StartPlaybackAsync(sonos, coordinator, request, speaker, tracks, shuffle, false);
+}).WithSummary("Play the tracks matching the name and genre filter, ignoring the schedule");
 
 async Task<IResult> StartPlaybackAsync(SonosService sonos, PlaybackCoordinator coordinator, HttpRequest request, string? speaker, string[] tracks, bool shuffle, bool useSchedule)
 {

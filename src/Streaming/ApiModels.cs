@@ -22,6 +22,8 @@ public sealed record TrackMetadata(
 
 public sealed record TrackResponse(string Path, string Title, string Url, string Genre, TrackMetadata Metadata);
 
+public sealed record TracksPageResponse(IReadOnlyList<TrackResponse> Items, int Total);
+
 public sealed record GenreUpdateRequest(string Path, string? Genre);
 
 public sealed record UploadResponse(IReadOnlyList<string> Saved, IReadOnlyList<string> Skipped, IReadOnlyList<string> Flagged, IReadOnlyList<string> Failed);
@@ -41,8 +43,8 @@ public sealed record StateResponse(
 
 public sealed record PlayResponse(string Speaker, int Tracks);
 
-/// <summary>Tracks selected from the current search results.</summary>
-public sealed record PlaySelectionRequest(IReadOnlyList<string> Paths);
+/// <summary>The track filter to play: a name fragment and/or genres (a track matches any of them).</summary>
+public sealed record PlaySelectionRequest(string? Name, IReadOnlyList<string>? Genres);
 
 public sealed record SpeakerResponse(string Speaker);
 
@@ -67,6 +69,8 @@ public sealed record ScheduleSaveRequest(IReadOnlyList<ScheduleRuleResponse> Rul
 [JsonSerializable(typeof(ErrorResponse))]
 [JsonSerializable(typeof(SonosErrorResponse))]
 [JsonSerializable(typeof(TrackResponse[]))]
+[JsonSerializable(typeof(TracksPageResponse))]
+[JsonSerializable(typeof(string[]))]
 [JsonSerializable(typeof(UploadResponse))]
 [JsonSerializable(typeof(DeletedResponse))]
 [JsonSerializable(typeof(HealthResponse))]

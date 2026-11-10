@@ -491,3 +491,4 @@ $RECYCLE.BIN/
 wwwroot/music/*
 !wwwroot/music/.gitkeep
 out/
+src/Streaming/data/streaming.db

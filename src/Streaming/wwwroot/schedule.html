@@ -90,10 +90,9 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const baseGenres = ['Blues', 'Relax', 'Country', 'Dance', 'Elektronisch', 'Folk', 'Funk', 'Hip-hop', 'Jazz', 'Klassiek', 'Latin', 'Metal', 'Pop', 'Reggae', 'Rock', 'Soul', 'Wereldmuziek'];
 const days = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'].map(code => [code, dayLabel(code)]);
 let rules = [];
-let availableGenres = [...baseGenres];
+let availableGenres = [];
 
 function say(text) { $('status').textContent = text; }
 
@@ -301,11 +300,9 @@ async function saveSchedule(nextRules) {
 }
 
 async function loadGenres() {
-  const res = await api('/api/tracks');
+  const res = await api('/api/genres');
   if (!res.ok) return;
-  const tracks = await res.json();
-  const found = tracks.flatMap(track => genreValues(track.genre));
-  availableGenres = [...new Set([...baseGenres, ...found])].sort((a, b) => a.localeCompare(b, LANG));
+  availableGenres = (await res.json()).sort((a, b) => a.localeCompare(b, LANG));
 }
 
 async function loadSchedule() {

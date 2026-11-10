@@ -37,6 +37,7 @@ public sealed class PlayAuditReportServiceTests
         public Task RecordPlayAsync(long trackId, DateTime playedAtUtc, string playbackMode, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task<IReadOnlyDictionary<string, string>> GetEffectiveGenresAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
+        public Task<IReadOnlyList<string>> GetGenresAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<string>>([]);
         public Task<IReadOnlyDictionary<string, TrackMetadata>> GetTrackMetadataAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyDictionary<string, TrackMetadata>>(new Dictionary<string, TrackMetadata>());
         public Task SetGenreOverrideAsync(long trackId, string? genre, CancellationToken cancellationToken = default) => Task.CompletedTask;

@@ -193,6 +193,7 @@ public sealed class PlaybackCoordinatorTests : IDisposable
     {
         public Dictionary<string, string> Genres { get; } = new(StringComparer.Ordinal);
         public Task<IReadOnlyDictionary<string, string>> GetEffectiveGenresAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyDictionary<string, string>>(Genres);
+        public Task<IReadOnlyList<string>> GetGenresAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<string>>([]);
         public Task InitializeAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<long?> StorePurchaseEvidenceAsync(UploadedDocument document, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<long> IndexTrackAsync(string fullPath, long? purchaseEvidenceId, UploadedDocument? license, CancellationToken cancellationToken = default) => throw new NotSupportedException();

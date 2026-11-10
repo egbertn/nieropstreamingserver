@@ -22,10 +22,25 @@ public interface IAuditStorage
     Task<IReadOnlyDictionary<string, string>> GetEffectiveGenresAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyDictionary<string, TrackMetadata>> GetTrackMetadataAsync(CancellationToken cancellationToken = default);
     Task SetGenreOverrideAsync(long trackId, string? genre, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<string>> GetGenresAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed class AuditStorage (StreamingOptions options): IAuditStorage
 {
+    private static readonly string[] DefaultGenres = ["Blues", "Relax", "Country", "Dance", "Elektronisch", "Folk", "Funk", "Hip-hop", "Jazz", "Klassiek", "Latin", "Metal", "Pop", "Reggae", "Rock", "Soul", "Wereldmuziek"];
+
+    public async Task<IReadOnlyList<string>> GetGenresAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT Name FROM Genre ORDER BY Name";
+        var result = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(reader.GetString(0));
+        return result;
+    }
+
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
@@ -74,8 +89,26 @@ public sealed class AuditStorage (StreamingOptions options): IAuditStorage
                 CalculatedAtUtc TEXT NOT NULL,
                 PRIMARY KEY (MusicFileId, MonthUtc)
             );
+            CREATE TABLE IF NOT EXISTS Genre (
+                Name TEXT PRIMARY KEY COLLATE NOCASE
+            );
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
+
+        // Seed only an empty table, so genres a customer removes later do not come back.
+        var count = connection.CreateCommand();
+        count.CommandText = "SELECT COUNT(*) FROM Genre";
+        if ((long)(await count.ExecuteScalarAsync(cancellationToken))! == 0)
+        {
+            var seed = connection.CreateCommand();
+            seed.CommandText = "INSERT OR IGNORE INTO Genre (Name) VALUES ($name)";
+            var seedName = seed.Parameters.Add("$name", SqliteType.Text);
+            foreach (var name in DefaultGenres)
+            {
+                seedName.Value = name;
+                await seed.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
 
         // CREATE TABLE IF NOT EXISTS does not add columns to a database that already existed before they were introduced.
         await EnsureColumnAsync(connection, "MusicFile", "Genre", "TEXT NULL", cancellationToken);

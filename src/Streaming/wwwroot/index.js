@@ -1,7 +1,8 @@
 const $ = id => document.getElementById(id);
 const say = text => $('status').textContent = text;
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const genres = ['Blues', 'Relax' ,'Country', 'Dance', 'Elektronisch', 'Folk', 'Funk', 'Hip-hop', 'Jazz', 'Klassiek', 'Latin', 'Metal', 'Pop', 'Reggae', 'Rock', 'Soul', 'Wereldmuziek'];
+let genres = /** @type {string[]} */ [];
+let filterGenres = /** @type {string[]} */([]);
 
 function genreValues(value) {
   return value && value !== 'onbekend' ? value.split(',').map(item => item.trim()).filter(Boolean) : [];
@@ -125,44 +126,63 @@ async function load() {
   $('speaker').innerHTML = speakers.map(s => `<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('')
     || `<option value="">${t('noSpeakerFound')}</option>`;
 
+  await loadGenres();
   await loadTracks();
   refreshState();
 }
 
 const crossIcon = '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 1 13 13M13 1 1 13" stroke="currentColor" stroke-width="2" fill="none"/></svg>';
 const pageSize = 10;
-let allTracks = [];
 let currentPage = 0;
 
-function matchingTracks() {
-  const name = $('searchName').value.trim().toLocaleLowerCase();
-  const genre = $('searchGenre').value.trim().toLocaleLowerCase();
-  return allTracks.filter(track =>
-    track.title.toLocaleLowerCase().includes(name)
-    && (track.genre.toLocaleLowerCase().includes(genre) || genreListLabel(track.genre).toLocaleLowerCase().includes(genre)));
+let totalTracks = 0;
+let loadSeq = 0;
+
+function trackQuery() {
+  const query = new URLSearchParams();
+  const name = $('searchName').value.trim();
+  if (name) query.set('name', name);
+  for (const genre of filterGenres) query.append('genre', genre);
+  return query;
+}
+
+function updateGenreFilterButton() {
+  $('searchGenre').textContent = filterGenres.length ? genreListLabel(filterGenres.join(', ')) : t('allGenres');
+}
+
+async function loadGenres() {
+  const res = await api('/api/genres');
+  if (res.ok) genres = await res.json();
+  renderGenreOptions($('uploadGenreOptions'));
 }
 
 async function loadTracks() {
-  const res = await api('/api/tracks');
+  const seq = ++loadSeq;
+  const query = trackQuery();
+  query.set('page', currentPage);
+  query.set('pageSize', pageSize);
+  const res = await api('/api/tracks?' + query);
   if (!res.ok) {
     const data = await res.json();
     throw new Error(data.error || t('loadFailed'));
   }
-  allTracks = await res.json();
-  renderTracks();
+  const data = await res.json();
+  if (seq !== loadSeq) return;
+  const pages = Math.max(1, Math.ceil(data.total / pageSize));
+  if (currentPage >= pages) { currentPage = pages - 1; return loadTracks(); }
+  totalTracks = data.total;
+  renderTracks(data.items);
 }
 
-function renderTracks() {
-  const tracks = matchingTracks();
-  const pages = Math.max(1, Math.ceil(tracks.length / pageSize));
-  currentPage = Math.min(currentPage, pages - 1);
-  $('selectionInfo').textContent = tracks.length ? t('selectionInfo', { n: tracks.length }) : t('noTracksFound');
+function renderTracks(tracks) {
+  const pages = Math.max(1, Math.ceil(totalTracks / pageSize));
+  $('selectionInfo').textContent = totalTracks ? t('selectionInfo', { n: totalTracks }) : t('noTracksFound');
   $('pageInfo').textContent = t('pageInfo', { page: currentPage + 1, total: pages });
   $('pagePrevious').disabled = currentPage === 0;
   $('pageNext').disabled = currentPage >= pages - 1;
   const list = $('tracks');
   list.replaceChildren();
-  for (const track of tracks.slice(currentPage * pageSize, (currentPage + 1) * pageSize)) {
+  for (const track of tracks) {
     const row = document.createElement('tr');
     const title = document.createElement('td');
     title.className = 'title';
@@ -193,14 +213,13 @@ async function startPlayback() {
     await post('/api/play', new URLSearchParams({ mode, shuffle: $('shuffle').checked }).toString());
     return;
   }
-  const paths = matchingTracks().map(track => track.path);
-  if (!paths.length) { say(t('noTracksFound')); return; }
+  if (!totalTracks) { say(t('noTracksFound')); return; }
   say(t('busy'));
   try {
     const res = await api('/api/play/selection' + speakerParam(new URLSearchParams({ shuffle: $('shuffle').checked }).toString()), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paths })
+      body: JSON.stringify({ name: $('searchName').value.trim(), genres: filterGenres })
     });
     const data = await res.json();
     say(res.ok ? t('trackCount', { n: data.tracks }) : data.error);
@@ -407,9 +426,33 @@ $('genreDialog').addEventListener('close', e => {
   if (e.target.returnValue === 'save') saveGenre(e.target.dataset.trackPath);
 });
 $('btnStart').onclick = startPlayback;
-for (const id of ['searchName', 'searchGenre']) $(id).oninput = () => { currentPage = 0; renderTracks(); };
-$('pagePrevious').onclick = () => { currentPage--; renderTracks(); };
-$('pageNext').onclick = () => { currentPage++; renderTracks(); };
+let searchTimer;
+$('searchName').oninput = () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { currentPage = 0; loadTracks().catch(err => say(t('error') + err.message)); }, 300);
+};
+$('searchGenre').onclick = () => {
+  renderGenreOptions($('filterGenreOptions'), filterGenres);
+  $('filterAll').checked = !filterGenres.length;
+  $('filterDialog').showModal();
+};
+// "All genres" and individual genres exclude each other; an empty selection also means all.
+$('filterAll').onchange = e => {
+  if (e.target.checked) for (const input of $('filterGenreOptions').querySelectorAll('input')) input.checked = false;
+};
+$('filterGenreOptions').onchange = () => {
+  $('filterAll').checked = !$('filterGenreOptions').querySelector('input:checked');
+};
+$('filterDialog').addEventListener('close', e => {
+  if (e.target.returnValue !== 'filter') return;
+  filterGenres = [...$('filterGenreOptions').querySelectorAll('input:checked')].map(input => input.value);
+  updateGenreFilterButton();
+  currentPage = 0;
+  loadTracks().catch(err => say(t('error') + err.message));
+});
+updateGenreFilterButton();
+$('pagePrevious').onclick = () => { currentPage--; loadTracks(); };
+$('pageNext').onclick = () => { currentPage++; loadTracks(); };
 $('volume').onchange = e => post('/api/volume', 'level=' + e.target.value);
 $('speaker').onchange = refreshState;
 load().catch(err => say(t('error') + err.message));
