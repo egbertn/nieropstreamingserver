@@ -89,15 +89,17 @@ Enter the API token printed by the installer. You can retrieve it later with:
 sudo cat /etc/nierop-music/environment
 ```
 
-The installer asks whether to use Sonos or local ALSA audio, installs the application in
+The installer asks whether to use Sonos or local ALSA audio. For ALSA it lists playback
+devices and playback-volume mixer controls on the chosen card; select the output and its
+matching control. It stops before installing if no suitable hardware volume control is
+available. It installs the application in
 `/opt/streaming` and creates a dedicated, non-login `streaming` service account. It does
 not start a new installation until you run the second command. On upgrades it stops the
 running service before copying files and restarts it afterwards. Music, the database,
 schedule, systemd overrides and `/etc/nierop-music/environment` are preserved; the audio
 output selection updates `Streaming__Playback__UseSonos`. When Sonos is selected, the installer adds
 `Streaming__Sonos__DiscoveryPort=1901` if it is not already set, preserving an existing
-choice. On an upgrade, run `sudo systemctl restart nierop-music` to apply the installer
-settings.
+choice. An active service is restarted after the installer applies the audio settings.
 The `.local` address requires mDNS on the Pi and client. If it does not resolve, use the
 Pi's LAN IP in the browser and update `Streaming__PublicBaseUrl` in the environment file
 to that same LAN address, then restart `nierop-music`. Do not expose this HTTP service to
@@ -142,7 +144,7 @@ no sound passes through the till PC.
 ### Local audio output (ALSA)
 
 Sonos is optional. In local broadcast mode, the service plays the playlist itself and sends
-the audio through Linux's ALSA audio system to the machine's default output. Connect
+the audio through Linux's ALSA audio system to the selected output. Connect
 powered speakers or an amplifier to the computer's analog audio jack (where available), or
 use a USB audio adapter/DAC. The browser still only sends playback commands; audio comes
 directly from the server's audio output. This mode does not contact or require a Sonos
@@ -274,10 +276,9 @@ track.
 
 ## USB-DAC broadcast mode
 
-Set `Streaming:Playback:UseSonos` to `false` to make this service the player. It starts
-`ffplay` for the local playlist and sends audio to Linux's default ALSA audio device. The
-USB-DAC should therefore be selected as the Pi's default output; the service unit grants the
-process the `audio` supplementary group for access to `/dev/snd`.
+Set `Streaming:Playback:UseSonos` to `false` to make this service the player. The installer
+configures `ffplay` to use the chosen ALSA playback device and the mixer on the same card.
+The service unit grants the process the `audio` supplementary group for access to `/dev/snd`.
 
 Install the player once on the Raspberry Pi and inspect the connected DAC:
 
@@ -286,16 +287,38 @@ sudo apt install ffmpeg alsa-utils
 aplay -l
 ```
 
-Use the system's audio settings or an ALSA configuration to make the listed USB DAC the
-default output, then configure the service:
+With the installer, select the DAC's playback device and its matching playback volume control.
+For manual configuration, set the playback and mixer devices to the same ALSA card:
 
 ```ini
 [Service]
 Environment=Streaming__Playback__UseSonos=false
+Environment=Streaming__Playback__AlsaPlaybackDevice=plughw:CARD=USB_DAC,DEV=0
+Environment=Streaming__Playback__AlsaMixerDevice=hw:CARD=USB_DAC
+Environment="Streaming__Playback__AlsaVolumeControl=Speaker,0"
 ```
 
 `ffplay` is an external OS dependency and is not included in the Native AOT executable. Set
 `Streaming:Playback:FfplayPath` when it is installed somewhere other than `ffplay` on `PATH`.
+Replace `USB_DAC`, the device number and `Speaker,0` with values reported by `aplay -l`
+and `amixer -D hw:CARD=USB_DAC scontents`. Select a control with `pvolume` capability
+that controls the chosen output, and ensure it is unmuted. The volume slider changes
+that hardware playback control, not the current track's software gain. Some cards have
+multiple controls; sharing a card does not guarantee that each control affects every
+output. The installer does not test the actual sound or change mixer levels, so test
+playback and volume on the connected output after installation.
+
+When no playback device is configured, `ffplay` retains its existing default audio
+behavior and the mixer defaults to ALSA's `default` control device and `Master` control.
+Set `Streaming__Playback__AlsaMixerPath` if `amixer` is not on the service's `PATH`.
+Selecting an ALSA playback device forces SDL's ALSA driver and uses the selected PCM.
+
+If `ffplay` plays through PulseAudio or PipeWire's PulseAudio compatibility server, set
+`Streaming__Playback__AlsaMixerDevice=pulse` and use `Master` (check with
+`amixer -D pulse scontrols`). This adjusts the PulseAudio server's default output, which
+may differ from an explicitly selected stream output. The ALSA PulseAudio plugin and
+access to the same user's PulseAudio server are required; a systemd service running as
+another user may not have access. Restart the service after changing its configuration.
 
 ## CI and releases
 
@@ -376,8 +399,12 @@ journalctl -u nierop-music -f
 | `Streaming:PublicBaseUrl` | `http://raspberrypi.local:8080` | LAN URL that Sonos uses to fetch queued audio; must never be `localhost` |
 | `Streaming:ApiToken` | empty | shared secret for `/api`; empty disables the check |
 | `ConnectionStrings:sqlite` | `data/streaming.db` | SQLite catalogue and audit database; relative paths are resolved against the application directory |
-| `Streaming:Playback:UseSonos` | `true` | `true` controls Sonos; `false` plays locally via `ffplay` to the default USB-DAC/ALSA output and audits as `Broadcast` |
+| `Streaming:Playback:UseSonos` | `true` | `true` controls Sonos; `false` plays locally through `ffplay` and audits as `Broadcast` |
 | `Streaming:Playback:FfplayPath` | `ffplay` | command or absolute path for the local broadcast audio player |
+| `Streaming:Playback:AlsaPlaybackDevice` | unset | selected ALSA PCM device for `ffplay`; when unset, the player retains its default audio behavior |
+| `Streaming:Playback:AlsaMixerDevice` | `default` | ALSA control device for the playback volume |
+| `Streaming:Playback:AlsaVolumeControl` | `Master` | ALSA simple mixer control, optionally with its index (for example `Speaker,0`) |
+| `Streaming:Playback:AlsaMixerPath` | `amixer` | command or absolute path for the ALSA mixer utility |
 | `Streaming:Sonos:Addresses` | empty | JSON array or comma-separated speaker IPs; skips SSDP when a configured speaker responds |
 | `Streaming:Sonos:DiscoveryPort` | 0 (installer: 1901) | fixed UDP source port for SSDP; set it when you need to open a specific firewall port |
 | `Smtp:Host` | empty | SMTP server used for emailing reports; email endpoints fail when it is not configured |

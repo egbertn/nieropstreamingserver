@@ -65,9 +65,7 @@ if [[ ! -f /etc/nierop-music/environment ]]; then
   token="$(openssl rand -hex 24)"
 fi
 
-was_active=false
 if systemctl is-active --quiet "$SERVICE_NAME"; then
-  was_active=true
   systemctl stop "$SERVICE_NAME"
 fi
 
@@ -113,7 +111,7 @@ sed -e "s|__DIR__|$INSTALL_DIR|g" -e "s|__USER__|$SERVICE_USER|g" \
   "$SRC_DIR/nierop-music.service" > "/etc/systemd/system/$SERVICE_NAME.service"
 
 systemctl daemon-reload
-if [[ "$START_SERVICE" == --no-start && "$was_active" == false ]]; then
+if [[ "$START_SERVICE" == --no-start ]]; then
   echo "Service installed but not started."
   echo "Start it with: sudo systemctl enable --now $SERVICE_NAME"
   echo "API token (enter this in the browser):"

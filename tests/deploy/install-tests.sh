@@ -69,6 +69,8 @@ command() {
     case "${2:-}" in
       ffplay) [[ "${TEST_FFPLAY:-false}" == true ]]; return ;;
       ffmpeg) [[ "${TEST_FFMPEG:-true}" == true ]]; return ;;
+      amixer) [[ "${TEST_AMIXER:-false}" == true ]]; return ;;
+      aplay) [[ "${TEST_APLAY:-false}" == true ]]; return ;;
     esac
   fi
   builtin command "$@"
@@ -77,12 +79,40 @@ apt-get() {
   echo "apt-get $*" >> "$TEST_ROOT/apt.log"
   TEST_FFPLAY=true
   TEST_FFMPEG=true
+  TEST_AMIXER=true
+  TEST_APLAY=true
+}
+aplay() {
+  [[ "${TEST_APLAY_FAIL:-false}" == false ]] || return 1
+  [[ "${TEST_NO_CARDS:-false}" == false ]] || return 0
+  echo '**** List of PLAYBACK Hardware Devices ****'
+  echo 'card 0: HDMI [HDMI], device 0: HDMI [HDMI]'
+  echo 'card 2: USB_DAC [USB DAC], device 1: USB Audio [USB Audio]'
+}
+amixer() {
+  echo "$*" >> "$TEST_ROOT/mixer.log"
+  [[ "${TEST_MIXER_FAIL:-false}" == false ]] || return 1
+  if [[ "$3" == scontents ]]; then
+    echo "Simple mixer control 'IEC958',0"
+    echo '  Capabilities: pswitch'
+    if [[ "${TEST_NO_VOLUME:-false}" == false ]]; then
+      echo "Simple mixer control 'Speaker',0"
+      echo '  Capabilities: pvolume pswitch'
+      echo "Simple mixer control 'PCM',1"
+      echo '  Capabilities: pvolume'
+      echo "Simple mixer control 'Mic',0"
+      echo '  Capabilities: cvolume cswitch'
+    fi
+  fi
 }
 systemctl() {
   echo "$*" >> "$TEST_ROOT/system.log"
+  if [[ "$1" == restart && -f "$TEST_ROOT/etc/nierop-music/environment" ]]; then
+    cp "$TEST_ROOT/etc/nierop-music/environment" "$TEST_ROOT/environment-at-restart"
+  fi
   if [[ "$1" == is-active ]]; then [[ "${TEST_ACTIVE:-false}" == true ]]; fi
 }
-export -f uname getconf df ldd curl useradd command apt-get systemctl
+export -f uname getconf df ldd curl useradd command apt-get aplay amixer systemctl
 
 expect_failure() {
   local name="$1" message="$2"
@@ -117,14 +147,30 @@ grep -Fxq 'Streaming__Sonos__DiscoveryPort=1901' "$test_root/etc/nierop-music/en
 echo "PASS: exactly 512 MB, verified download and no-start installation"
 
 sed -i '/^Streaming__Sonos__DiscoveryPort=/d' "$test_root/etc/nierop-music/environment"
-echo 2 > "$test_root/tty"
+printf '2\n2\n1\n' > "$test_root/tty"
 env TEST_FFPLAY=false bash "$test_root/bootstrap.sh" > "$test_root/output" 2>&1
 grep -Fxq 'apt-get update' "$test_root/apt.log"
-grep -Fxq 'apt-get install -y ffmpeg' "$test_root/apt.log"
+grep -Fxq 'apt-get install -y ffmpeg alsa-utils' "$test_root/apt.log"
 grep -Fxq 'Streaming__Playback__UseSonos=false' "$test_root/etc/nierop-music/environment"
+grep -Fxq 'Streaming__Playback__AlsaPlaybackDevice="plughw:CARD=USB_DAC,DEV=1"' "$test_root/etc/nierop-music/environment"
+grep -Fxq 'Streaming__Playback__AlsaMixerDevice="hw:CARD=USB_DAC"' "$test_root/etc/nierop-music/environment"
+grep -Fxq 'Streaming__Playback__AlsaVolumeControl="Speaker,0"' "$test_root/etc/nierop-music/environment"
+grep -Fxq -- '-D hw:CARD=USB_DAC sget Speaker,0' "$test_root/mixer.log"
 ! grep -q '^Streaming__Sonos__DiscoveryPort=' "$test_root/etc/nierop-music/environment"
 grep -q '^Streaming__ApiToken=[a-f0-9]\{48\}$' "$test_root/etc/nierop-music/environment"
-echo "PASS: ALSA selection installs ffmpeg when ffplay is missing and preserves environment"
+echo "PASS: ALSA selection installs ffmpeg and alsa-utils when local audio tools are missing"
+
+rm -f "$test_root/apt.log"
+printf '2\n2\n2\n' > "$test_root/tty"
+env TEST_FFPLAY=true TEST_AMIXER=false TEST_ACTIVE=true bash "$test_root/bootstrap.sh" > "$test_root/output" 2>&1
+grep -Fxq 'apt-get install -y ffmpeg alsa-utils' "$test_root/apt.log"
+grep -Fxq 'Streaming__Playback__AlsaVolumeControl="PCM,1"' "$test_root/environment-at-restart"
+echo "PASS: ALSA selection installs alsa-utils when only amixer is missing"
+
+printf '2\n1\n' > "$test_root/tty"
+expect_failure "no playback hardware" "No ALSA playback devices found" TEST_FFPLAY=true TEST_AMIXER=true TEST_APLAY=true TEST_NO_CARDS=true
+expect_failure "mixer without playback volume" "No supported playback volume control found" TEST_FFPLAY=true TEST_AMIXER=true TEST_APLAY=true TEST_NO_VOLUME=true
+expect_failure "unreadable ALSA mixer" "Cannot inspect ALSA mixer" TEST_FFPLAY=true TEST_AMIXER=true TEST_APLAY=true TEST_MIXER_FAIL=true
 
 printf 'Streaming__Sonos__DiscoveryPort=0\n' >> "$test_root/etc/nierop-music/environment"
 echo 1 > "$test_root/tty"
@@ -177,6 +223,7 @@ echo music > "$test_root/opt/streaming/wwwroot/music/existing.mp3"
 echo database > "$test_root/opt/streaming/data/streaming.db"
 echo schedule > "$test_root/opt/streaming/data/schedule.json"
 cp "$test_root/etc/nierop-music/environment" "$test_root/environment-before"
+rm -f "$test_root/system.log"
 env TEST_ACTIVE=true bash "$test_root/source/install.sh" "$test_root/opt/streaming" streaming --no-start \
   > "$test_root/output" 2>&1
 grep -Fxq music "$test_root/opt/streaming/wwwroot/music/existing.mp3"
@@ -184,8 +231,8 @@ grep -Fxq database "$test_root/opt/streaming/data/streaming.db"
 grep -Fxq schedule "$test_root/opt/streaming/data/schedule.json"
 cmp "$test_root/environment-before" "$test_root/etc/nierop-music/environment"
 grep -Fxq 'stop nierop-music' "$test_root/system.log"
-grep -Fxq 'restart nierop-music' "$test_root/system.log"
-echo "PASS: upgrade preserves music, database, schedule, settings and token; restarts service"
+! grep -q '^restart' "$test_root/system.log"
+echo "PASS: upgrade preserves music, database, schedule, settings and token; defers restart"
 
 if env TEST_HEALTH=false bash "$test_root/source/install.sh" "$test_root/opt/streaming" streaming \
   > "$test_root/output" 2>&1; then

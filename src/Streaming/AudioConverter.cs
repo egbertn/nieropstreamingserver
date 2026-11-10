@@ -53,9 +53,7 @@ internal sealed class AudioConverter(ILogger<AudioConverter> logger)
                 StartInfo = new ProcessStartInfo("ffmpeg", arguments)
                 {
                     RedirectStandardError = true,
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
+                    RedirectStandardOutput = true
                 }
             };
             try
@@ -80,7 +78,7 @@ internal sealed class AudioConverter(ILogger<AudioConverter> logger)
             {
                 if (!process.HasExited)
                     process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync(CancellationToken.None);
+                await process.WaitForExitAsync(cancellationToken);
                 if (!cancellationToken.IsCancellationRequested)
                     throw new AudioConversionException("FFmpeg conversion timed out.");
                 throw;
@@ -120,9 +118,7 @@ internal sealed class AudioConverter(ILogger<AudioConverter> logger)
                 ["-v", "error", "-protocol_whitelist", "file,pipe", "-show_entries", "format=duration", "-of", "csv=p=0", input])
             {
                 RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
+                RedirectStandardError = true
             });
             if (probe is null) return null;
             var output = probe.StandardOutput.ReadToEndAsync(cancellationToken);

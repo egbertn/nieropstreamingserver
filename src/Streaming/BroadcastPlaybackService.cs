@@ -12,7 +12,6 @@ public interface IBroadcastPlaybackService
     Task StopAsync(CancellationToken cancellationToken = default);
     Task NextAsync(CancellationToken cancellationToken = default);
     Task PreviousAsync(CancellationToken cancellationToken = default);
-    void SetVolume(int level);
 }
 
 public interface IRandomSource
@@ -31,7 +30,6 @@ public sealed class BroadcastPlaybackService(StreamingOptions options, ILogger<B
 
     private string[] _queue = [];
     private int _currentIndex;
-    private int _volume = 25;
     private string _state = "STOPPED";
     private DateTime _trackStartedUtc;
     private TimeSpan _elapsedBeforePause;
@@ -132,12 +130,6 @@ public sealed class BroadcastPlaybackService(StreamingOptions options, ILogger<B
     public Task NextAsync(CancellationToken cancellationToken = default) => ChangeTrackAsync(1, cancellationToken);
     public Task PreviousAsync(CancellationToken cancellationToken = default) => ChangeTrackAsync(-1, cancellationToken);
 
-    public void SetVolume(int level)
-    {
-        lock (_sync)
-            _volume = Math.Clamp(level, 0, 100);
-    }
-
     private async Task ChangeTrackAsync(int offset, CancellationToken _)
     {
         lock (_sync)
@@ -159,7 +151,6 @@ public sealed class BroadcastPlaybackService(StreamingOptions options, ILogger<B
         while (!cancellationToken.IsCancellationRequested)
         {
             string relativePath = "";
-            int volume = 0;
             TimeSpan startOffset = TimeSpan.Zero;
             Task? pendingResume = null;
             lock (_sync)
@@ -171,7 +162,6 @@ public sealed class BroadcastPlaybackService(StreamingOptions options, ILogger<B
                 else
                 {
                     relativePath = _queue[_currentIndex];
-                    volume = _volume;
                     startOffset = _elapsedBeforePause;
                     _trackStartedUtc = DateTime.UtcNow - startOffset;
                     _elapsedBeforePause = TimeSpan.Zero;
@@ -192,14 +182,8 @@ public sealed class BroadcastPlaybackService(StreamingOptions options, ILogger<B
             }
             else
             {
-                using var player = Process.Start(new ProcessStartInfo
-                {
-                    FileName = options.FfplayPath,
-                    Arguments = $"-nodisp -nostats -hide_banner -autoexit -loglevel error -volume {volume} -ss {startOffset.TotalSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)} \"{fullPath.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"",
-                    RedirectStandardInput = true,
-                    RedirectStandardError = true,
-
-                }) ?? throw new InvalidOperationException($"Lokale audiospeler '{options.FfplayPath}' kon niet worden gestart.");
+                using var player = Process.Start(CreatePlayerStartInfo(options, fullPath, startOffset))
+                    ?? throw new InvalidOperationException($"Lokale audiospeler '{options.FfplayPath}' kon niet worden gestart.");
 
                 lock (_sync)
                 {
@@ -207,6 +191,7 @@ public sealed class BroadcastPlaybackService(StreamingOptions options, ILogger<B
                     if (cancellationToken.IsCancellationRequested || _state == "PAUSED_PLAYBACK")
                         TryStopPlayer();
                 }
+
                 var errorReader = DrainPlayerErrorsAsync(player, relativePath);
                 try
                 {
@@ -252,6 +237,26 @@ public sealed class BroadcastPlaybackService(StreamingOptions options, ILogger<B
                 }
             }
         }
+    }
+
+    internal static ProcessStartInfo CreatePlayerStartInfo(StreamingOptions options, string fullPath, TimeSpan startOffset)
+    {
+        var startInfo = new ProcessStartInfo(options.FfplayPath,
+        [
+            "-nodisp", "-nostats", "-hide_banner", "-autoexit", "-loglevel", "error",
+            "-ss", startOffset.TotalSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture), fullPath
+        ])
+        {
+            RedirectStandardInput = true,
+            RedirectStandardError = true
+        };
+        if (!string.IsNullOrWhiteSpace(options.AlsaPlaybackDevice))
+        {
+            startInfo.Environment["SDL_AUDIODRIVER"] = "alsa";
+            startInfo.Environment["AUDIODEV"] = options.AlsaPlaybackDevice;
+            startInfo.Environment.Remove("SDL_AUDIO_DEVICE_NAME");
+        }
+        return startInfo;
     }
 
     private TimeSpan GetElapsed() => _state == "PLAYING" ? _elapsedBeforePause + (DateTime.UtcNow - _trackStartedUtc) : _elapsedBeforePause;

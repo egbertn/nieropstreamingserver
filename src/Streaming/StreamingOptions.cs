@@ -13,6 +13,10 @@ public sealed class StreamingOptions
     public string? PublicBaseUrl { get; init; }
     public int Port { get; init; } = 8080;
     public string FfplayPath { get; init; } = "ffplay";
+    public string? AlsaPlaybackDevice { get; init; }
+    public string AlsaMixerPath { get; init; } = "amixer";
+    public string AlsaMixerDevice { get; init; } = "default";
+    public string AlsaVolumeControl { get; init; } = "Master";
     public bool UseSonos { get; init; } = true;
     public string[] SonosAddresses { get; init; } = [];
     public int SonosDiscoveryPort { get; init; }
@@ -57,6 +61,10 @@ public sealed class StreamingOptions
             PublicBaseUrl = configuration["Streaming:PublicBaseUrl"]?.TrimEnd('/'),
             Port = configuration.GetValue("Streaming:Port", 8080),
             FfplayPath = configuration["Streaming:Playback:FfplayPath"] ?? "ffplay",
+            AlsaPlaybackDevice = configuration["Streaming:Playback:AlsaPlaybackDevice"],
+            AlsaMixerPath = configuration["Streaming:Playback:AlsaMixerPath"] ?? "amixer",
+            AlsaMixerDevice = configuration["Streaming:Playback:AlsaMixerDevice"] ?? "default",
+            AlsaVolumeControl = configuration["Streaming:Playback:AlsaVolumeControl"] ?? "Master",
             UseSonos = configuration.GetValue("Streaming:Playback:UseSonos", true),
             SonosAddresses = sonosAddresses,
             SonosDiscoveryPort = configuration.GetValue("Streaming:Sonos:DiscoveryPort", 0),

@@ -19,6 +19,36 @@ public sealed class StreamingOptionsTests
         Assert.Equal(1901, options.SonosDiscoveryPort);
     }
 
+    [Fact]
+    public void FromConfiguration_ReadsAlsaMixerSettings()
+    {
+        var configuration = CreateConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Streaming:Playback:AlsaMixerPath"] = "/usr/bin/amixer",
+            ["Streaming:Playback:AlsaPlaybackDevice"] = "plughw:CARD=DAC,DEV=0",
+            ["Streaming:Playback:AlsaMixerDevice"] = "pulse",
+            ["Streaming:Playback:AlsaVolumeControl"] = "PCM"
+        }).Build();
+
+        var options = StreamingOptions.FromConfiguration(configuration, new TestEnvironment());
+
+        Assert.Equal("/usr/bin/amixer", options.AlsaMixerPath);
+        Assert.Equal("plughw:CARD=DAC,DEV=0", options.AlsaPlaybackDevice);
+        Assert.Equal("pulse", options.AlsaMixerDevice);
+        Assert.Equal("PCM", options.AlsaVolumeControl);
+    }
+
+    [Fact]
+    public void FromConfiguration_UsesDefaultAlsaMixerSettings()
+    {
+        var options = StreamingOptions.FromConfiguration(CreateConfigurationBuilder().Build(), new TestEnvironment());
+
+        Assert.Equal("amixer", options.AlsaMixerPath);
+        Assert.Null(options.AlsaPlaybackDevice);
+        Assert.Equal("default", options.AlsaMixerDevice);
+        Assert.Equal("Master", options.AlsaVolumeControl);
+    }
+
     [Theory]
     [InlineData("192.168.1.211", new[] { "192.168.1.211" })]
     [InlineData(" 192.168.1.211, ,192.168.1.212 ", new[] { "192.168.1.211", "192.168.1.212" })]

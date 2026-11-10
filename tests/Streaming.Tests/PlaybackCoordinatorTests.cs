@@ -186,7 +186,6 @@ public sealed class PlaybackCoordinatorTests : IDisposable
         public Task PauseAsync(CancellationToken cancellationToken = default) { Paused = !Paused; return Task.CompletedTask; }
         public Task NextAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task PreviousAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public void SetVolume(int level) { }
     }
 
     private sealed class FakeStorage : IAuditStorage

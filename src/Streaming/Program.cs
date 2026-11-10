@@ -16,6 +16,7 @@ builder.Host.UseSystemd();
 var services = builder.Services;
 services.AddSingleton(streamingOptions);
 services.AddSingleton<AudioConverter>();
+services.AddSingleton<AlsaVolumeService>();
 // Singleton (i.p.v. transient typed client) zodat de speakercache van 5 minuten gedeeld wordt
 // tussen requests en de PlaybackAuditWorker; anders draait elke poll een volledige discovery.
 services.AddHttpClient(nameof(SonosService), c => c.Timeout = TimeSpan.FromSeconds(10));
@@ -677,7 +678,26 @@ app.MapPost("/api/pause", (SonosService sonos, IBroadcastPlaybackService broadca
 app.MapPost("/api/stop", (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker) => PlaybackCommand(sonos, broadcast, request, speaker, s => sonos.StopAsync(s), b => b.StopAsync(), true));
 app.MapPost("/api/next", (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker) => NavigationCommand(sonos, broadcast, request, speaker, s => sonos.NextAsync(s), b => b.NextAsync()));
 app.MapPost("/api/previous", (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker) => NavigationCommand(sonos, broadcast, request, speaker, s => sonos.PreviousAsync(s), b => b.PreviousAsync()));
-app.MapPost("/api/volume", (SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, int level, string? speaker) => PlaybackCommand(sonos, broadcast, request, speaker, s => sonos.SetVolumeAsync(s, level), b => { b.SetVolume(level); return Task.CompletedTask; }));
+app.MapPost("/api/volume", async (SonosService sonos, AlsaVolumeService alsaVolume, HttpRequest request, int level, string? speaker) =>
+{
+    if (!UseSonosPlayback())
+    {
+        try
+        {
+            await alsaVolume.SetVolumeAsync(level, request.HttpContext.RequestAborted);
+            return Results.Ok(new SpeakerResponse("USB-audio/DAC"));
+        }
+        catch (AlsaVolumeException ex)
+        {
+            return Results.Json(
+                new ErrorResponse(L(request, $"Linux-audiovolume instellen is mislukt: {ex.Message}", $"Could not set Linux audio volume: {ex.Message}")),
+                StreamingJsonContext.Default.ErrorResponse,
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    }
+
+    return await Command(sonos, request, speaker, target => sonos.SetVolumeAsync(target, level));
+});
 
 async Task<IResult> NavigationCommand(SonosService sonos, IBroadcastPlaybackService broadcast, HttpRequest request, string? speaker, Func<SonosSpeaker, Task> sonosAction, Func<IBroadcastPlaybackService, Task> broadcastAction)
 {
