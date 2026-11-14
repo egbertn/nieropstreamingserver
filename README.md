@@ -12,6 +12,11 @@ speaker, and controls that speaker directly over UPnP. Intended for a trusted lo
 network; the `/api` endpoints are protected by a shared token, the audio itself is served
 without authentication because the speaker cannot send headers.
 
+Server-generated pages and catalogued API messages use the first `Accept-Language`
+entry: values beginning with `nl` select Dutch; all others select English. The
+translations are maintained in `src/Streaming/MessageCatalog.cs` under `language/code`
+keys. Error details supplied by external services or exceptions are passed through as-is.
+
 ## Music sources and copyright
 
 This application is not connected to or supplied with an external music catalogue or
