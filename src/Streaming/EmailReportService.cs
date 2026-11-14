@@ -91,6 +91,13 @@ public sealed class EmailReportService(
     {
         if (string.IsNullOrWhiteSpace(recipientEmail) || !IsValidEmail(recipientEmail))
             throw new ArgumentException("Ongeldig e-mailadres opgegeven.", nameof(recipientEmail));
+
+        if (string.IsNullOrWhiteSpace(_options.SmtpUsername))
+            throw new InvalidOperationException("SMTP-gebruikersnaam is not configured (omgevingsvariabele Smtp__Username).");
+
+        if (string.IsNullOrWhiteSpace(_options.SmtpPassword))
+            throw new InvalidOperationException("SMTP-wachtwoord is not configured (omgevingsvariabele Smtp__Password).");
+
         if (_playAuditReportService is null)
             throw new InvalidOperationException("Speelauditrapportage is niet beschikbaar.");
 

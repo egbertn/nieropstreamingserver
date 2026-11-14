@@ -20,10 +20,10 @@ public sealed class StreamingOptions
     public bool UseSonos { get; init; } = true;
     public string[] SonosAddresses { get; init; } = [];
     public int SonosDiscoveryPort { get; init; }
-    public required string SmtpHost { get; init; }
+    public string? SmtpHost { get; init; }
     public int SmtpPort { get; init; } = 587;
-    public required string SmtpUsername { get; init; }
-    public required string SmtpPassword { get; init; }
+    public string? SmtpUsername { get; init; }
+    public string? SmtpPassword { get; init; }
     public bool SmtpUseSsl { get; init; }
     public string SmtpFrom { get; init; } = "music-report@local";
     public string SmtpFromName { get; init; } = "Sonos Muziek Server";
