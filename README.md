@@ -3,7 +3,7 @@
 Music streaming for Sonos (or classic Audio Output).
 
 The project is organized as a .NET solution with the application in `src/Streaming`
-and unit tests in `tests/Streaming.Tests`. The music collection under
+and unit tests in `tests/Streaming.Tests`.  The music collection under
 `src/Streaming/wwwroot/music` is local runtime data and is intentionally excluded from
 source control and published output.
 
@@ -12,11 +12,20 @@ speaker, and controls that speaker directly over UPnP. Intended for a trusted lo
 network; the `/api` endpoints are protected by a shared token, the audio itself is served
 without authentication because the speaker cannot send headers.
 
+## Music sources and copyright
+
+This application is not connected to or supplied with an external music catalogue or
+streaming provider. It does not search for or download tracks from third-party services.
+The operator supplies audio files by uploading them or copying them to the server, and the
+service streams those local files to the configured player; it is not a source of music.
+The operator is responsible for ensuring they have the necessary rights to store and play
+every file.
+
 ![The control page in a browser](demo.jpg)
 ![The schedule music in a browser](schedule.jpg)
 ![The catalog as report in a browser](catalog%20report%20as%20pdf.jpg)
 
-## Why
+## Why... the pain
 
 Getting a Raspberry Pi to serve music to a Sonos speaker usually means stacking up
 infrastructure: Samba or NFS to get the files onto the Pi, a media server such as Plex,
@@ -58,7 +67,7 @@ service manager are required. In one deployment measurement, the service used ab
 The installer checks architecture, RAM, available disk space, the release's minimum glibc
 version and native shared libraries before installing. Use a recent 64-bit OS.
 
-Upload conversion requires `ffmpeg` with the `libmp3lame` encoder on the server. The
+The upload feature requires `ffmpeg` with the `libmp3lame` encoder on the server. The
 installer installs the `ffmpeg` OS package with `apt-get` if needed. For Sonos playback, no
 local audio output is required. For local ALSA playback, `ffplay` and a working ALSA audio
 output such as an analog audio jack or USB audio adapter/DAC are also required.
