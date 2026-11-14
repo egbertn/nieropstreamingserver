@@ -24,7 +24,7 @@ public sealed class GenreScheduleService(StreamingOptions options) : IGenreSched
     public async Task SaveAsync(ScheduleSaveRequest request, CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(options.SchedulePath) ?? ".");
-        var response = new ScheduleResponse(request.Rules.Select(NormalizeRule).ToArray());
+        var response = new ScheduleResponse([.. request.Rules.Select(NormalizeRule)]);
         var tempPath = options.SchedulePath + ".tmp";
         await using (var stream = File.Create(tempPath))
             await JsonSerializer.SerializeAsync(stream, response, StreamingJsonContext.Default.ScheduleResponse, cancellationToken);
@@ -71,11 +71,6 @@ public sealed class GenreScheduleService(StreamingOptions options) : IGenreSched
     private static ScheduleRuleResponse NormalizeRule(ScheduleRuleResponse rule)
     {
         var id = string.IsNullOrWhiteSpace(rule.Id) ? Guid.NewGuid().ToString("N") : rule.Id.Trim();
-        var genres = rule.Genres
-            .Select(g => g.Trim())
-            .Where(g => g.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
 
         return rule with
         {
@@ -85,7 +80,10 @@ public sealed class GenreScheduleService(StreamingOptions options) : IGenreSched
             Date = string.IsNullOrWhiteSpace(rule.Date) ? null : rule.Date.Trim(),
             StartTime = string.IsNullOrWhiteSpace(rule.StartTime) ? null : rule.StartTime.Trim(),
             EndTime = string.IsNullOrWhiteSpace(rule.EndTime) ? null : rule.EndTime.Trim(),
-            Genres = genres
+            Genres = [.. rule.Genres
+                .Select(g => g.Trim())
+                .Where(g => g.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)]
         };
     }
 

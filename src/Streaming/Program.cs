@@ -155,7 +155,7 @@ async Task<string[]> FilterTracksAsync(string? name, IReadOnlyCollection<string>
         tracks = tracks.Where(t => effective.TryGetValue(t, out var g)
             && g.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Any(wanted.Contains));
     }
-    return tracks.ToArray();
+    return [.. tracks];
 }
 
 app.MapGet("/api/tracks", async (HttpRequest request, string? name, string[]? genre, int page = 0, int pageSize = 10) =>
@@ -165,12 +165,12 @@ app.MapGet("/api/tracks", async (HttpRequest request, string? name, string[]? ge
     var matches = await FilterTracksAsync(name, genre, ct);
     var effective = await auditStorage.GetEffectiveGenresAsync(ct);
     var metadata = await auditStorage.GetTrackMetadataAsync(ct);
-    var items = matches.Skip(Math.Max(page, 0) * pageSize).Take(pageSize).Select(t => new TrackResponse(
+    IReadOnlyList<TrackResponse> items = [.. matches.Skip(Math.Max(page, 0) * pageSize).Take(pageSize).Select(t => new TrackResponse(
         t,
         Path.GetFileNameWithoutExtension(t),
         UrlFor(request, t),
         effective.GetValueOrDefault(t, "onbekend"),
-        metadata.GetValueOrDefault(t, new TrackMetadata("", "", 0, "", "", "", "", null, null, null, null)))).ToArray();
+        metadata.GetValueOrDefault(t, new TrackMetadata("", "", 0, "", "", "", "", null, null, null, null))))];
     return new TracksPageResponse(items, matches.Length);
 });
 
@@ -643,7 +643,7 @@ app.MapPost("/api/play", async (SonosService sonos, PlaybackCoordinator coordina
 {
     if (mode is not null and not ("all" or "schedule"))
         return Results.BadRequest(new ErrorResponse(L(request, "Ongeldige afspeelmodus", "Invalid playback mode")));
-    return await StartPlaybackAsync(sonos, coordinator, request, speaker, EnumerateTracks().ToArray(), shuffle, mode == "schedule");
+    return await StartPlaybackAsync(sonos, coordinator, request, speaker, [.. EnumerateTracks()], shuffle, mode == "schedule");
 });
 
 app.MapPost("/api/play/selection", async (PlaySelectionRequest selection, SonosService sonos, PlaybackCoordinator coordinator, HttpRequest request, string? speaker, bool shuffle = false) =>

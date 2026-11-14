@@ -177,7 +177,7 @@ public sealed class PlaybackCoordinatorTests : IDisposable
         public BroadcastPlaybackState GetState() => new("STOPPED", null, null, null, null);
         public Task StartAsync(IReadOnlyList<string> tracks, bool shuffle, CancellationToken cancellationToken = default)
         {
-            Tracks = tracks.ToArray();
+            Tracks = [.. tracks];
             Shuffle = shuffle;
             Paused = false;
             return Task.CompletedTask;

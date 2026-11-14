@@ -25,10 +25,10 @@ public sealed class PlaybackCoordinator(
 
     public static string[] EnumerateTracks(string musicRoot) =>
         Directory.Exists(musicRoot)
-            ? Directory.EnumerateFiles(musicRoot, "*", SearchOption.AllDirectories)
+            ? [.. Directory.EnumerateFiles(musicRoot, "*", SearchOption.AllDirectories)
                 .Where(f => AudioExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
                 .Select(f => Path.GetRelativePath(musicRoot, f).Replace(Path.DirectorySeparatorChar, '/'))
-                .Order(StringComparer.OrdinalIgnoreCase).ToArray()
+                .Order(StringComparer.OrdinalIgnoreCase)]
             : [];
 
     public async Task<int> StartAsync(SonosSpeaker? speaker, string[] tracks, bool shuffle, bool useSchedule, string baseUrl, CancellationToken ct)

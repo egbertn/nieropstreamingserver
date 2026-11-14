@@ -380,7 +380,7 @@ public sealed class AuditStorage (StreamingOptions options): IAuditStorage
             }
         }
 
-        return plays.Values.Select(item => new PlayAuditReportItem(item.Title, item.Dates, item.Months)).ToArray();
+        return [.. plays.Values.Select(item => new PlayAuditReportItem(item.Title, item.Dates, item.Months))];
     }
 
     private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)
